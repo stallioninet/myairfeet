@@ -1,0 +1,154 @@
+import { NavLink, useLocation } from 'react-router-dom'
+import { useState } from 'react'
+
+const navSections = [
+  {
+    title: null,
+    items: [
+      { label: 'Dashboard', icon: 'bi-grid-1x2-fill', path: '/dashboard' },
+    ]
+  },
+  {
+    title: 'Administration',
+    icon: 'bi-shield-lock',
+    label: 'Admin',
+    children: [
+      { label: 'Users', path: '/admin/users' },
+      { label: 'Create User', path: '/admin/users/create' },
+      { label: 'User Levels', path: '/admin/levels' },
+      { label: 'User Access', path: '/admin/access' },
+      { label: 'User Activity', path: '/admin/activity' },
+      { label: 'Privileges', path: '/admin/privileges' },
+      { label: 'Backup', path: '/admin/backup' },
+    ]
+  },
+  {
+    title: 'Items',
+    icon: 'bi-tags',
+    label: 'Items',
+    children: [
+      { label: 'Item Types', path: '/items' },
+      { label: 'Product Items', path: '/items/products' },
+      { label: 'Sizes', path: '/items/sizes' },
+      { label: 'Group Products', path: '/items/groups' },
+    ]
+  },
+  {
+    title: 'Sales',
+    icon: 'bi-people',
+    label: 'Sales Reps',
+    children: [
+      { label: 'Active', path: '/sales-reps/active', disabled: true },
+      { label: 'Inactive', path: '/sales-reps/inactive', disabled: true },
+    ]
+  },
+  {
+    title: null,
+    icon: 'bi-building',
+    label: 'Customers',
+    children: [
+      { label: 'Active', path: '/customers/active', disabled: true },
+      { label: 'Inactive', path: '/customers/inactive', disabled: true },
+    ]
+  },
+  {
+    title: 'Billing',
+    icon: 'bi-receipt',
+    label: 'Invoices',
+    children: [
+      { label: 'All Invoices', path: '/invoices', disabled: true },
+      { label: 'Outstanding', path: '/invoices/outstanding', disabled: true },
+    ]
+  },
+  {
+    title: null,
+    items: [
+      { label: 'Commissions', icon: 'bi-cash-stack', path: '/commissions', disabled: true },
+      { label: 'Events', icon: 'bi-calendar-event', path: '/events', disabled: true },
+    ]
+  },
+  {
+    title: 'Analytics',
+    icon: 'bi-graph-up',
+    label: 'Reports',
+    children: [
+      { label: 'Yearly', path: '/reports/yearly', disabled: true },
+      { label: 'Monthly', path: '/reports/monthly', disabled: true },
+    ]
+  },
+]
+
+export default function Sidebar() {
+  const location = useLocation()
+  const [openMenus, setOpenMenus] = useState({ Administration: true })
+
+  const toggleMenu = (title) => {
+    setOpenMenus(prev => ({ ...prev, [title || Math.random()]: !prev[title] }))
+  }
+
+  const isChildActive = (children) => {
+    return children?.some(c => location.pathname === c.path || location.pathname.startsWith(c.path + '/'))
+  }
+
+  return (
+    <nav className="sidebar">
+      <div className="sidebar-brand">
+        <img src="https://staging.stallioni.com/assets/images/logo_fleet.png" alt="Commission Tracker" style={{ maxWidth: '100%', height: 'auto', maxHeight: 45 }} />
+        <h5>Commission Tracker</h5>
+      </div>
+      <ul className="sidebar-nav">
+        {navSections.map((section, si) => (
+          <li key={si}>
+            {section.title && (
+              <div className="sidebar-section">{section.title}</div>
+            )}
+
+            {/* Direct items (no collapse) */}
+            {section.items?.map((item, ii) => (
+              <NavLink
+                key={ii}
+                to={item.disabled ? '#' : item.path}
+                className={({ isActive }) => `sidebar-link${isActive && !item.disabled ? ' active' : ''}`}
+                onClick={e => item.disabled && e.preventDefault()}
+                style={item.disabled ? { opacity: 0.5 } : {}}
+              >
+                <i className={`bi ${item.icon}`}></i>
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
+
+            {/* Collapsible menu */}
+            {section.children && (
+              <>
+                <a
+                  href="#"
+                  className={`sidebar-link${isChildActive(section.children) ? ' active' : ''}`}
+                  onClick={e => { e.preventDefault(); toggleMenu(section.label) }}
+                >
+                  <i className={`bi ${section.icon}`}></i>
+                  <span>{section.label}</span>
+                  <i className={`bi bi-chevron-${openMenus[section.label] ? 'down' : 'right'} ms-auto`} style={{ fontSize: '0.7rem' }}></i>
+                </a>
+                {openMenus[section.label] && (
+                  <div className="sidebar-submenu" style={{ paddingLeft: '20px' }}>
+                    {section.children.map((child, ci) => (
+                      <NavLink
+                        key={ci}
+                        to={child.disabled ? '#' : child.path}
+                        className={({ isActive }) => `sidebar-link${isActive && !child.disabled ? ' active' : ''}`}
+                        onClick={e => child.disabled && e.preventDefault()}
+                        style={child.disabled ? { opacity: 0.5 } : {}}
+                      >
+                        <span>{child.label}</span>
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}
