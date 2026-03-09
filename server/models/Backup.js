@@ -8,7 +8,7 @@ const backupSchema = new mongoose.Schema({
   status: { type: String, enum: ['success', 'failed', 'in_progress'], default: 'success' },
   collections: { type: Number, default: 0 },
   records: { type: Number, default: 0 },
-  data: { type: mongoose.Schema.Types.Mixed, default: null },
+  gridfs_id: { type: mongoose.Schema.Types.ObjectId, default: null },
 }, {
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
 })
