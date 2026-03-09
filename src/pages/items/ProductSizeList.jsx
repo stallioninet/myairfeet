@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../../lib/api'
 import Pagination from '../../components/Pagination'
@@ -72,12 +71,23 @@ export default function ProductSizeList() {
 
   // === Assign Item Size Modal ===
   function openAssignModal() {
-    setAssignRows([{ product_item: '', size: '', sku: '' }])
+    const firstProduct = products.length > 0 ? products[0]._id : ''
+    const firstSize = sizes.length > 0 ? sizes[0]._id : ''
+    setAssignRows([{ product_item: firstProduct, size: firstSize, sku: '' }])
     setShowAssignModal(true)
   }
 
   function addAssignRow() {
-    setAssignRows(prev => [...prev, { product_item: '', size: '', sku: '' }])
+    setAssignRows(prev => {
+      const last = prev[prev.length - 1]
+      const usedSizes = prev.filter(r => r.product_item === last?.product_item).map(r => r.size)
+      const nextSize = sizes.find(s => !usedSizes.includes(s._id))
+      return [...prev, {
+        product_item: last?.product_item || '',
+        size: nextSize ? nextSize._id : '',
+        sku: ''
+      }]
+    })
   }
 
   function removeAssignRow(index) {
@@ -178,18 +188,9 @@ export default function ProductSizeList() {
 
   return (
     <>
-      {/* Page Header */}
+      {/* Action Bar */}
       <div className="d-flex justify-content-between align-items-center mb-4">
-        <div>
-          <nav aria-label="breadcrumb">
-            <ol className="breadcrumb mb-1">
-              <li className="breadcrumb-item"><Link to="/"><i className="bi bi-house-door"></i></Link></li>
-              <li className="breadcrumb-item"><Link to="/items/products">Product Items</Link></li>
-              <li className="breadcrumb-item active">Item Size List</li>
-            </ol>
-          </nav>
-          <h3 className="mb-0">Item Size List</h3>
-        </div>
+        <h5 className="mb-0 fw-bold"><i className="bi bi-rulers me-2 text-primary"></i>Item Size List</h5>
       </div>
 
       {/* Action Buttons + Search */}
@@ -290,31 +291,29 @@ export default function ProductSizeList() {
                 </div>
                 <div className="modal-body" style={{ padding: 24 }}>
                   {assignRows.map((row, i) => (
-                    <div className="row g-2 mb-2 align-items-end" key={i}>
-                      <div className="col-md-4">
-                        {i === 0 && <label className="form-label fw-medium">Item Name <span className="text-danger">*</span></label>}
+                    <div className="d-flex gap-2 mb-3 align-items-end" key={i}>
+                      <div style={{ flex: 2 }}>
+                        <label className="form-label fw-medium small mb-1">Item Name <span className="text-danger">*</span></label>
                         <select className="form-select" value={row.product_item} onChange={e => updateAssignRow(i, 'product_item', e.target.value)}>
                           <option value="">Select item...</option>
                           {products.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
                         </select>
                       </div>
-                      <div className="col-md-3">
-                        {i === 0 && <label className="form-label fw-medium">Size <span className="text-danger">*</span></label>}
+                      <div style={{ flex: 1.2 }}>
+                        <label className="form-label fw-medium small mb-1">Size <span className="text-danger">*</span></label>
                         <select className="form-select" value={row.size} onChange={e => updateAssignRow(i, 'size', e.target.value)}>
-                          <option value="">Select size...</option>
-                          {sizes.map(s => <option key={s._id} value={s._id}>{s.code} - {s.name}</option>)}
+                          <option value="">Select...</option>
+                          {sizes.map(s => <option key={s._id} value={s._id}>{s.code}</option>)}
                         </select>
                       </div>
-                      <div className="col-md-3">
-                        {i === 0 && <label className="form-label fw-medium">SKU</label>}
-                        <input type="text" className="form-control" value={row.sku} onChange={e => updateAssignRow(i, 'sku', e.target.value)} placeholder="SKU" />
+                      <div style={{ flex: 1.2 }}>
+                        <label className="form-label fw-medium small mb-1">SKU</label>
+                        <input type="text" className="form-control" value={row.sku} onChange={e => updateAssignRow(i, 'sku', e.target.value)} />
                       </div>
-                      <div className="col-md-2">
-                        {assignRows.length > 1 && (
-                          <button className="btn btn-danger btn-sm" onClick={() => removeAssignRow(i)} style={{ width: 36, height: 36, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <i className="bi bi-x-lg"></i>
-                          </button>
-                        )}
+                      <div style={{ flexShrink: 0, paddingBottom: 1 }}>
+                        <button className="btn btn-primary btn-sm" onClick={() => removeAssignRow(i)} style={{ width: 36, height: 36, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <i className="bi bi-x-lg"></i>
+                        </button>
                       </div>
                     </div>
                   ))}

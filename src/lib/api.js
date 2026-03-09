@@ -101,6 +101,17 @@ export const api = {
   deleteUserLevel: (id) => request(`/user-levels/${id}`, { method: 'DELETE' }),
   seedUserLevels: () => request('/user-levels/seed', { method: 'POST' }),
 
+  // Sales Reps
+  getSalesReps: (status) => request('/sales-reps' + (status ? '?status=' + status : '')),
+  getSalesRep: (id) => request(`/sales-reps/${id}`),
+  getSalesRepStats: () => request('/sales-reps/stats'),
+  createSalesRep: (data) => request('/sales-reps', { method: 'POST', body: JSON.stringify(data) }),
+  updateSalesRep: (id, data) => request(`/sales-reps/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  activateSalesRep: (id) => request(`/sales-reps/${id}/activate`, { method: 'PUT' }),
+  deactivateSalesRep: (id) => request(`/sales-reps/${id}/deactivate`, { method: 'PUT' }),
+  deleteSalesRep: (id) => request(`/sales-reps/${id}`, { method: 'DELETE' }),
+  seedSalesReps: () => request('/sales-reps/seed', { method: 'POST' }),
+
   // Backups
   getBackups: () => request('/backups'),
   getBackupStats: () => request('/backups/stats'),

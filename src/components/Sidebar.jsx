@@ -27,10 +27,10 @@ const navSections = [
     icon: 'bi-tags',
     label: 'Items',
     children: [
-      { label: 'Item Types', path: '/items' },
-      { label: 'Product Items', path: '/items/products' },
-      { label: 'Sizes', path: '/items/sizes' },
-      { label: 'Group Products', path: '/items/groups' },
+      { label: 'Item Types', path: '/items?tab=types' },
+      { label: 'Product Items', path: '/items?tab=products' },
+      { label: 'Sizes', path: '/items?tab=sizes' },
+      { label: 'Group Products', path: '/items?tab=groups' },
     ]
   },
   {
@@ -38,8 +38,8 @@ const navSections = [
     icon: 'bi-people',
     label: 'Sales Reps',
     children: [
-      { label: 'Active', path: '/sales-reps/active', disabled: true },
-      { label: 'Inactive', path: '/sales-reps/inactive', disabled: true },
+      { label: 'Active', path: '/sales-reps/active' },
+      { label: 'Inactive', path: '/sales-reps/inactive' },
     ]
   },
   {
@@ -87,7 +87,13 @@ export default function Sidebar() {
   }
 
   const isChildActive = (children) => {
-    return children?.some(c => location.pathname === c.path || location.pathname.startsWith(c.path + '/'))
+    const full = location.pathname + location.search
+    return children?.some(c => {
+      if (c.path.includes('?')) {
+        return full === c.path || full.startsWith(c.path + '&')
+      }
+      return location.pathname === c.path || location.pathname.startsWith(c.path + '/')
+    })
   }
 
   return (
@@ -131,17 +137,23 @@ export default function Sidebar() {
                 </a>
                 {openMenus[section.label] && (
                   <div className="sidebar-submenu" style={{ paddingLeft: '20px' }}>
-                    {section.children.map((child, ci) => (
-                      <NavLink
-                        key={ci}
-                        to={child.disabled ? '#' : child.path}
-                        className={({ isActive }) => `sidebar-link${isActive && !child.disabled ? ' active' : ''}`}
-                        onClick={e => child.disabled && e.preventDefault()}
-                        style={child.disabled ? { opacity: 0.5 } : {}}
-                      >
-                        <span>{child.label}</span>
-                      </NavLink>
-                    ))}
+                    {section.children.map((child, ci) => {
+                      const full = location.pathname + location.search
+                      const isActive = child.path.includes('?')
+                        ? full === child.path
+                        : location.pathname === child.path
+                      return (
+                        <NavLink
+                          key={ci}
+                          to={child.disabled ? '#' : child.path}
+                          className={`sidebar-link${isActive && !child.disabled ? ' active' : ''}`}
+                          onClick={e => child.disabled && e.preventDefault()}
+                          style={child.disabled ? { opacity: 0.5 } : {}}
+                        >
+                          <span>{child.label}</span>
+                        </NavLink>
+                      )
+                    })}
                   </div>
                 )}
               </>

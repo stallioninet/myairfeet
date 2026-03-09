@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../../lib/api'
 import Pagination from '../../components/Pagination'
@@ -189,18 +188,9 @@ export default function ProductGroupList() {
 
   return (
     <>
-      {/* Page Header */}
+      {/* Action Bar */}
       <div className="d-flex justify-content-between align-items-center mb-4">
-        <div>
-          <nav aria-label="breadcrumb">
-            <ol className="breadcrumb mb-1">
-              <li className="breadcrumb-item"><Link to="/"><i className="bi bi-house-door"></i></Link></li>
-              <li className="breadcrumb-item">Items</li>
-              <li className="breadcrumb-item active">Group Products</li>
-            </ol>
-          </nav>
-          <h3 className="mb-0"><i className="bi bi-collection me-2" style={{ color: 'var(--primary)' }}></i>Group Product Items</h3>
-        </div>
+        <h5 className="mb-0 fw-bold"><i className="bi bi-collection me-2 text-primary"></i>Group Product Items</h5>
         <button className="btn btn-primary" onClick={openAdd}>
           <i className="bi bi-plus-lg me-1"></i> Create Group
         </button>

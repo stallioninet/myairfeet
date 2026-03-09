@@ -15,6 +15,7 @@ import userAccessRouter from './routes/userAccess.js'
 import userActivityRouter from './routes/userActivity.js'
 import userLevelsRouter from './routes/userLevels.js'
 import backupsRouter from './routes/backups.js'
+import salesRepsRouter from './routes/salesReps.js'
 import User from './models/User.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -67,6 +68,7 @@ app.use('/api/user-access', userAccessRouter)
 app.use('/api/user-activity', userActivityRouter)
 app.use('/api/user-levels', userLevelsRouter)
 app.use('/api/backups', backupsRouter)
+app.use('/api/sales-reps', salesRepsRouter)
 
 // Health check
 app.get('/api/health', (req, res) => {

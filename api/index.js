@@ -12,6 +12,7 @@ import userAccessRouter from '../server/routes/userAccess.js'
 import userActivityRouter from '../server/routes/userActivity.js'
 import userLevelsRouter from '../server/routes/userLevels.js'
 import backupsRouter from '../server/routes/backups.js'
+import salesRepsRouter from '../server/routes/salesReps.js'
 
 const app = express()
 
@@ -77,6 +78,7 @@ app.use('/api/user-access', userAccessRouter)
 app.use('/api/user-activity', userActivityRouter)
 app.use('/api/user-levels', userLevelsRouter)
 app.use('/api/backups', backupsRouter)
+app.use('/api/sales-reps', salesRepsRouter)
 
 // Health check
 app.get('/api/health', (req, res) => {
