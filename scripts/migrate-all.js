@@ -261,14 +261,13 @@ async function migrate() {
   if (groups.length > 0) {
     await db.collection('productgroups').deleteMany({})
     const docs = groups.map(g => {
-      const prodIds = (g.product_items || '').split(',').map(id => productIdMap[parseInt(id)]).filter(Boolean)
+      const prodIds = (g.item || '').split(',').map(id => productIdMap[parseInt(id)]).filter(Boolean)
       return {
-        name: g.group_name || '',
-        description: g.group_desc || '',
+        name: g.item_group_name || '',
+        description: '',
         products: prodIds,
-        status: g.status === '1' ? 'active' : 'inactive',
-        created_at: validDate(g.created_on) || new Date(),
-        updated_at: validDate(g.modified_on) || new Date(),
+        status: 'active',
+        created_at: new Date(),
       }
     })
     await db.collection('productgroups').insertMany(docs)
