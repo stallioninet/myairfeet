@@ -8,7 +8,7 @@ const levelLabels = {
   'data-entry': 'Data Entry',
 }
 
-export default function TopHeader({ user, onLogout }) {
+export default function TopHeader({ user, onLogout, onToggleSidebar }) {
   const navigate = useNavigate()
 
   function getInitials() {
@@ -25,6 +25,9 @@ export default function TopHeader({ user, onLogout }) {
   return (
     <div className="top-header">
       <div className="d-flex align-items-center gap-2">
+        <button className="sidebar-toggle" onClick={onToggleSidebar} aria-label="Open menu">
+          <i className="bi bi-list"></i>
+        </button>
         <i className="bi bi-search text-muted"></i>
         <input
           type="text"

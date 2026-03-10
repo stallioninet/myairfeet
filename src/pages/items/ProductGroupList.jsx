@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { api } from '../../lib/api'
 import Pagination from '../../components/Pagination'
@@ -33,6 +33,8 @@ export default function ProductGroupList() {
   const [form, setForm] = useState(emptyForm)
   const [productSearch, setProductSearch] = useState('')
   const [saving, setSaving] = useState(false)
+  const [dragIdx, setDragIdx] = useState(null)
+  const [dragOverIdx, setDragOverIdx] = useState(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [page, setPage] = useState(1)
@@ -105,6 +107,48 @@ export default function ProductGroupList() {
         ? prev.products.filter(id => id !== productId)
         : [...prev.products, productId]
     }))
+  }
+
+  // Drag reorder selected products
+  function handleDragStart(idx) {
+    setDragIdx(idx)
+  }
+
+  function handleDragOver(e, idx) {
+    e.preventDefault()
+    setDragOverIdx(idx)
+  }
+
+  function handleDrop(idx) {
+    if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setDragOverIdx(null); return }
+    setForm(prev => {
+      const items = [...prev.products]
+      const [moved] = items.splice(dragIdx, 1)
+      items.splice(idx, 0, moved)
+      return { ...prev, products: items }
+    })
+    setDragIdx(null)
+    setDragOverIdx(null)
+  }
+
+  function handleDragEnd() {
+    setDragIdx(null)
+    setDragOverIdx(null)
+  }
+
+  function moveProduct(fromIdx, dir) {
+    const toIdx = fromIdx + dir
+    if (toIdx < 0 || toIdx >= form.products.length) return
+    setForm(prev => {
+      const items = [...prev.products]
+      ;[items[fromIdx], items[toIdx]] = [items[toIdx], items[fromIdx]]
+      return { ...prev, products: items }
+    })
+  }
+
+  // Get product object by id
+  function getProductById(id) {
+    return allProducts.find(p => p._id === id)
   }
 
   // Filtered products for modal search
@@ -377,7 +421,7 @@ export default function ProductGroupList() {
                         <span className="input-group-text"><i className="bi bi-search"></i></span>
                         <input type="text" className="form-control" placeholder="Search products..." value={productSearch} onChange={e => setProductSearch(e.target.value)} />
                       </div>
-                      <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 10, padding: '8px 0' }}>
+                      <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 10, padding: '8px 0' }}>
                         {filteredProducts.map(p => {
                           const typeName = getTypeName(p)
                           const ts = getTypeStyle(typeName)
@@ -408,10 +452,129 @@ export default function ProductGroupList() {
                           <div className="text-center text-muted py-3" style={{ fontSize: '.85rem' }}>No products found</div>
                         )}
                       </div>
-                      <div className="mt-2 small text-muted">
-                        <i className="bi bi-info-circle me-1"></i>{form.products.length} products selected
-                      </div>
                     </div>
+
+                    {/* Drag-to-reorder selected products */}
+                    {form.products.length > 0 && (
+                      <div className="col-12">
+                        <label className="form-label fw-medium d-flex align-items-center gap-2">
+                          <i className="bi bi-arrow-down-up text-primary"></i>
+                          Selected Products Order
+                          <span className="badge bg-primary rounded-pill">{form.products.length}</span>
+                        </label>
+                        <div className="small text-muted mb-2">
+                          <i className="bi bi-grip-vertical me-1"></i>Drag to reorder or use arrow buttons
+                        </div>
+                        <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, overflow: 'hidden', maxHeight: 220, overflowY: 'auto' }}>
+                          {form.products.map((pid, idx) => {
+                            const prod = getProductById(pid)
+                            const typeName = prod ? getTypeName(prod) : ''
+                            const ts = getTypeStyle(typeName)
+                            const isDragging = dragIdx === idx
+                            const isDragOver = dragOverIdx === idx
+                            return (
+                              <div
+                                key={pid}
+                                draggable
+                                onDragStart={() => handleDragStart(idx)}
+                                onDragOver={(e) => handleDragOver(e, idx)}
+                                onDrop={() => handleDrop(idx)}
+                                onDragEnd={handleDragEnd}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  padding: '8px 12px',
+                                  gap: 8,
+                                  background: isDragging ? '#eff6ff' : isDragOver ? '#dbeafe' : idx % 2 === 0 ? '#fff' : '#fafbfc',
+                                  borderBottom: idx < form.products.length - 1 ? '1px solid #f1f5f9' : 'none',
+                                  opacity: isDragging ? 0.6 : 1,
+                                  cursor: 'grab',
+                                  transition: 'background 0.15s',
+                                  borderTop: isDragOver ? '2px solid #2563eb' : '2px solid transparent',
+                                }}
+                              >
+                                {/* Drag handle */}
+                                <div style={{ color: '#94a3b8', fontSize: 16, cursor: 'grab', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                                  <i className="bi bi-grip-vertical"></i>
+                                </div>
+
+                                {/* Order number */}
+                                <div style={{
+                                  width: 24, height: 24, borderRadius: '50%',
+                                  background: '#2563eb', color: '#fff',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  fontSize: 11, fontWeight: 700, flexShrink: 0
+                                }}>
+                                  {idx + 1}
+                                </div>
+
+                                {/* Product name */}
+                                <span style={{ flex: 1, fontSize: '.84rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {prod?.name || pid}
+                                </span>
+
+                                {/* Type badge */}
+                                {typeName && (
+                                  <span style={{ fontSize: '.65rem', padding: '1px 6px', borderRadius: 4, fontWeight: 600, background: ts.bg, color: ts.color, flexShrink: 0 }}>
+                                    {typeName}
+                                  </span>
+                                )}
+
+                                {/* Up/Down/Remove buttons */}
+                                <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); moveProduct(idx, -1) }}
+                                    disabled={idx === 0}
+                                    style={{
+                                      width: 22, height: 22, borderRadius: 4, border: '1px solid #e2e8f0',
+                                      background: idx === 0 ? '#f8fafc' : '#fff', color: idx === 0 ? '#cbd5e1' : '#64748b',
+                                      cursor: idx === 0 ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11
+                                    }}
+                                    title="Move up"
+                                  >
+                                    <i className="bi bi-chevron-up"></i>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); moveProduct(idx, 1) }}
+                                    disabled={idx === form.products.length - 1}
+                                    style={{
+                                      width: 22, height: 22, borderRadius: 4, border: '1px solid #e2e8f0',
+                                      background: idx === form.products.length - 1 ? '#f8fafc' : '#fff', color: idx === form.products.length - 1 ? '#cbd5e1' : '#64748b',
+                                      cursor: idx === form.products.length - 1 ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11
+                                    }}
+                                    title="Move down"
+                                  >
+                                    <i className="bi bi-chevron-down"></i>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); toggleProduct(pid) }}
+                                    style={{
+                                      width: 22, height: 22, borderRadius: 4, border: '1px solid #fecaca',
+                                      background: '#fff', color: '#dc2626',
+                                      cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11
+                                    }}
+                                    title="Remove"
+                                  >
+                                    <i className="bi bi-x"></i>
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {form.products.length === 0 && (
+                      <div className="col-12">
+                        <div className="text-center py-3 text-muted small" style={{ border: '1px dashed var(--border-color)', borderRadius: 10 }}>
+                          <i className="bi bi-box-seam me-1"></i>No products selected. Check items above to add them.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="modal-footer border-0" style={{ padding: '16px 24px' }}>

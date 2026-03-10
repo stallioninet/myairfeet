@@ -47,8 +47,9 @@ const navSections = [
     icon: 'bi-building',
     label: 'Customers',
     children: [
-      { label: 'Active', path: '/customers/active', disabled: true },
-      { label: 'Inactive', path: '/customers/inactive', disabled: true },
+      { label: 'Active', path: '/customers/active' },
+      { label: 'Inactive', path: '/customers/inactive' },
+      { label: 'Suppliers', path: '/customers/suppliers' },
     ]
   },
   {
@@ -64,7 +65,7 @@ const navSections = [
     title: null,
     items: [
       { label: 'Commissions', icon: 'bi-cash-stack', path: '/commissions', disabled: true },
-      { label: 'Events', icon: 'bi-calendar-event', path: '/events', disabled: true },
+      { label: 'Events', icon: 'bi-calendar-event', path: '/events' },
     ]
   },
   {
@@ -78,7 +79,7 @@ const navSections = [
   },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ isOpen, onClose }) {
   const location = useLocation()
   const [openMenus, setOpenMenus] = useState({ Administration: true })
 
@@ -97,7 +98,12 @@ export default function Sidebar() {
   }
 
   return (
-    <nav className="sidebar">
+    <nav className={`sidebar${isOpen ? ' open' : ''}`}>
+      {/* Close button for mobile */}
+      <button className="sidebar-close" onClick={onClose} aria-label="Close sidebar">
+        <i className="bi bi-x-lg"></i>
+      </button>
+
       <div className="sidebar-brand">
         <img src="https://staging.stallioni.com/assets/images/logo_fleet.png" alt="Commission Tracker" style={{ maxWidth: '100%', height: 'auto', maxHeight: 45 }} />
         <h5>Commission Tracker</h5>
@@ -115,7 +121,7 @@ export default function Sidebar() {
                 key={ii}
                 to={item.disabled ? '#' : item.path}
                 className={({ isActive }) => `sidebar-link${isActive && !item.disabled ? ' active' : ''}`}
-                onClick={e => item.disabled && e.preventDefault()}
+                onClick={e => { if (item.disabled) e.preventDefault() }}
                 style={item.disabled ? { opacity: 0.5 } : {}}
               >
                 <i className={`bi ${item.icon}`}></i>
@@ -147,7 +153,7 @@ export default function Sidebar() {
                           key={ci}
                           to={child.disabled ? '#' : child.path}
                           className={`sidebar-link${isActive && !child.disabled ? ' active' : ''}`}
-                          onClick={e => child.disabled && e.preventDefault()}
+                          onClick={e => { if (child.disabled) e.preventDefault() }}
                           style={child.disabled ? { opacity: 0.5 } : {}}
                         >
                           <span>{child.label}</span>

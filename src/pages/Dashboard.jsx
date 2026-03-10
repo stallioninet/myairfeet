@@ -201,17 +201,15 @@ export default function Dashboard() {
         {countCards.map((card, i) => (
           <div className="col-6 col-md-4 col-lg-2" key={i}>
             <Link to={card.link || '#'} className="text-decoration-none">
-              <div className="card border-0 shadow-sm rounded-4 p-3 text-center h-100" style={{ transition: 'transform 0.2s' }}
+              <div className="stat-card text-center h-100" style={{ transition: 'transform 0.2s' }}
                 onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-3px)'}
                 onMouseLeave={e => e.currentTarget.style.transform = 'none'}
               >
-                <div className="d-flex align-items-center justify-content-center mb-2" style={{
-                  width: 44, height: 44, borderRadius: 12, background: card.bg, color: card.color, margin: '0 auto'
-                }}>
-                  <i className={`bi ${card.icon}`} style={{ fontSize: '1.25rem' }}></i>
+                <div className="stat-icon mx-auto mb-2" style={{ background: card.bg, color: card.color }}>
+                  <i className={`bi ${card.icon}`}></i>
                 </div>
-                <div className="fw-bold fs-4 text-dark">{card.dynamic ? userCount : card.value}</div>
-                <div className="small fw-semibold text-muted">{card.label}</div>
+                <div className="stat-value">{card.dynamic ? userCount : card.value}</div>
+                <div className="stat-label">{card.label}</div>
               </div>
             </Link>
           </div>
@@ -222,18 +220,14 @@ export default function Dashboard() {
       <div className="row g-3 mb-4">
         {kpis.map((kpi, i) => (
           <div className="col-6 col-lg-3" key={i}>
-            <div className="card border-0 shadow-sm rounded-4 p-3">
+            <div className="stat-card">
               <div className="d-flex align-items-center gap-3">
-                <div style={{
-                  width: 44, height: 44, borderRadius: 12, display: 'flex',
-                  alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem',
-                  background: kpi.bg, color: kpi.color
-                }}>
+                <div className="stat-icon" style={{ background: kpi.bg, color: kpi.color }}>
                   <i className={`bi ${kpi.icon}`}></i>
                 </div>
                 <div>
-                  <div className="fw-bold fs-5">{kpi.value}</div>
-                  <div className="small text-muted fw-medium">{kpi.label}</div>
+                  <div className="stat-value">{kpi.value}</div>
+                  <div className="stat-label">{kpi.label}</div>
                 </div>
               </div>
             </div>

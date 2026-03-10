@@ -16,6 +16,12 @@ import userActivityRouter from './routes/userActivity.js'
 import userLevelsRouter from './routes/userLevels.js'
 import backupsRouter from './routes/backups.js'
 import salesRepsRouter from './routes/salesReps.js'
+import eventsRouter from './routes/events.js'
+import taxRatesRouter from './routes/taxRates.js'
+import costInfoRouter from './routes/costInfo.js'
+import productStylesRouter from './routes/productStyles.js'
+import customersRouter from './routes/customers.js'
+import suppliersRouter from './routes/suppliers.js'
 import User from './models/User.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -69,6 +75,12 @@ app.use('/api/user-activity', userActivityRouter)
 app.use('/api/user-levels', userLevelsRouter)
 app.use('/api/backups', backupsRouter)
 app.use('/api/sales-reps', salesRepsRouter)
+app.use('/api/events', eventsRouter)
+app.use('/api/tax-rates', taxRatesRouter)
+app.use('/api/cost-info', costInfoRouter)
+app.use('/api/product-styles', productStylesRouter)
+app.use('/api/customers', customersRouter)
+app.use('/api/suppliers', suppliersRouter)
 
 // Health check
 app.get('/api/health', (req, res) => {

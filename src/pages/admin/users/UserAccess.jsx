@@ -109,8 +109,8 @@ export default function UserAccess() {
 
           {/* Access Table */}
           <div className="table-responsive">
-            <table className="table table-bordered mb-0 align-middle">
-              <thead>
+            <table className="table table-hover mb-0 align-middle">
+              <thead className="bg-light">
                 <tr>
                   <th style={{ minWidth: 250 }}>Access Privileges Name</th>
                   {levels.map(level => (

@@ -102,51 +102,31 @@ export default function ActiveSalesReps() {
       </div>
 
       {/* Stat Cards */}
-      <div className="row g-4 mb-4">
-        <div className="col-md-4">
-          <div className="card border-0 shadow-sm">
-            <div className="card-body d-flex align-items-center gap-3">
-              <div className="rounded-3 d-flex align-items-center justify-content-center" style={{ width: 44, height: 44, background: 'linear-gradient(135deg, #dbeafe, #bfdbfe)', color: '#2563eb' }}>
-                <i className="bi bi-people-fill"></i>
-              </div>
-              <div>
-                <div className="fw-bold fs-4">{stats.active}</div>
-                <div className="text-muted small">Active Reps</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="col-md-4">
-          <div className="card border-0 shadow-sm">
-            <div className="card-body d-flex align-items-center gap-3">
-              <div className="rounded-3 d-flex align-items-center justify-content-center" style={{ width: 44, height: 44, background: 'linear-gradient(135deg, #fee2e2, #fecaca)', color: '#dc2626' }}>
-                <i className="bi bi-person-dash-fill"></i>
-              </div>
-              <div>
-                <div className="fw-bold fs-4">{stats.inactive}</div>
-                <div className="text-muted small">Inactive Reps</div>
+      <div className="row g-3 mb-4">
+        {[
+          { value: stats.active, label: 'Active Reps', icon: 'bi-people-fill', bg: '#eff6ff', color: '#2563eb' },
+          { value: stats.inactive, label: 'Inactive Reps', icon: 'bi-person-dash-fill', bg: '#fef2f2', color: '#ef4444' },
+          { value: stats.total, label: 'Total Reps', icon: 'bi-graph-up', bg: '#ecfdf5', color: '#10b981' },
+        ].map((stat, i) => (
+          <div className="col-md-4 col-6" key={i}>
+            <div className="stat-card">
+              <div className="d-flex align-items-center gap-3">
+                <div className="stat-icon" style={{ background: stat.bg, color: stat.color }}>
+                  <i className={`bi ${stat.icon}`}></i>
+                </div>
+                <div>
+                  <div className="stat-value">{loading ? '-' : stat.value}</div>
+                  <div className="stat-label">{stat.label}</div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-        <div className="col-md-4">
-          <div className="card border-0 shadow-sm">
-            <div className="card-body d-flex align-items-center gap-3">
-              <div className="rounded-3 d-flex align-items-center justify-content-center" style={{ width: 44, height: 44, background: 'linear-gradient(135deg, #dcfce7, #bbf7d0)', color: '#16a34a' }}>
-                <i className="bi bi-graph-up"></i>
-              </div>
-              <div>
-                <div className="fw-bold fs-4">{stats.total}</div>
-                <div className="text-muted small">Total Reps</div>
-              </div>
-            </div>
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* Table */}
       <div className="card border-0 shadow-sm" style={{ borderRadius: 12, overflow: 'hidden' }}>
-        <div className="card-header py-3 px-4 text-white" style={{ background: 'linear-gradient(135deg, #2563eb, #3b82f6)', border: 'none' }}>
+        <div className="card-header py-3 px-4 text-white" style={{ background: 'linear-gradient(135deg, #2563eb, #1e40af)', border: 'none' }}>
           <div className="d-flex align-items-center gap-2">
             <i className="bi bi-table fs-5"></i>
             <span className="fw-semibold">Active Representatives</span>
@@ -194,18 +174,18 @@ export default function ActiveSalesReps() {
                       <td><a href={'mailto:' + r.email} className="text-decoration-none small">{r.email}</a></td>
                       <td>
                         <div className="d-flex gap-1">
-                          <Link to={'/sales-reps/' + r._id} className="btn btn-sm btn-outline-secondary" title="View" style={{ width: 32, height: 32, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}>
+                          <Link to={'/sales-reps/' + r._id} className="btn btn-sm btn-action btn-outline-info" title="View">
                             <i className="bi bi-eye"></i>
                           </Link>
-                          <Link to={'/sales-reps/' + r._id + '/edit'} className="btn btn-sm btn-outline-primary" title="Edit" style={{ width: 32, height: 32, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}>
+                          <Link to={'/sales-reps/' + r._id + '/edit'} className="btn btn-sm btn-action btn-outline-primary" title="Edit">
                             <i className="bi bi-pencil"></i>
                           </Link>
-                          <button className="btn btn-sm btn-outline-danger" title="Deactivate" onClick={() => setDeactivateRep(r)} style={{ width: 32, height: 32, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}>
+                          <button className="btn btn-sm btn-action btn-outline-danger" title="Deactivate" onClick={() => setDeactivateRep(r)}>
                             <i className="bi bi-person-dash"></i>
                           </button>
                         </div>
                       </td>
-                      <td className="pe-4"><span className="badge bg-success-subtle text-success rounded-pill px-3">Active</span></td>
+                      <td className="pe-4"><span className="badge badge-active">Active</span></td>
                     </tr>
                   )
                 })}
@@ -219,11 +199,12 @@ export default function ActiveSalesReps() {
       </div>
 
       {/* Deactivate Modal */}
-      {deactivateRep && (
-        <div className="modal show d-block" tabIndex="-1" style={{ background: 'rgba(0,0,0,0.5)' }}>
+      {deactivateRep && (<>
+        <div className="modal-backdrop fade show" style={{ zIndex: 1050 }}></div>
+        <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content">
-              <div className="modal-header text-white" style={{ background: 'linear-gradient(135deg, #dc2626, #ef4444)' }}>
+            <div className="modal-content border-0 shadow" style={{ borderRadius: 16, overflow: 'hidden' }}>
+              <div className="modal-header text-white border-0" style={{ background: 'linear-gradient(135deg, #dc2626, #b91c1c)' }}>
                 <h5 className="modal-title"><i className="bi bi-exclamation-triangle me-2"></i>Deactivate Sales Rep</h5>
                 <button type="button" className="btn-close btn-close-white" onClick={() => setDeactivateRep(null)}></button>
               </div>
@@ -237,7 +218,7 @@ export default function ActiveSalesReps() {
             </div>
           </div>
         </div>
-      )}
+      </>)}
     </div>
   )
 }

@@ -14,10 +14,14 @@ import UserAccess from './pages/admin/users/UserAccess'
 import UserActivity from './pages/admin/users/UserActivity'
 import UserActivityView from './pages/admin/users/UserActivityView'
 import BackupManagement from './pages/admin/BackupManagement'
+import EventList from './pages/events/EventList'
 import ActiveSalesReps from './pages/sales/ActiveSalesReps'
 import InactiveSalesReps from './pages/sales/InactiveSalesReps'
 import CreateSalesRep from './pages/sales/CreateSalesRep'
 import ViewSalesRep from './pages/sales/ViewSalesRep'
+import ActiveCustomers from './pages/customers/ActiveCustomers'
+import InactiveCustomers from './pages/customers/InactiveCustomers'
+import SupplierList from './pages/customers/SupplierList'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -62,12 +66,16 @@ function App() {
           <Route path="/admin/activity" element={<UserActivity />} />
           <Route path="/admin/activity/:id" element={<UserActivityView />} />
           <Route path="/admin/backup" element={<BackupManagement />} />
+          <Route path="/events" element={<EventList />} />
           <Route path="/items" element={<ItemsHub />} />
           <Route path="/sales-reps/active" element={<ActiveSalesReps />} />
           <Route path="/sales-reps/inactive" element={<InactiveSalesReps />} />
           <Route path="/sales-reps/create" element={<CreateSalesRep />} />
           <Route path="/sales-reps/:id/edit" element={<CreateSalesRep />} />
           <Route path="/sales-reps/:id" element={<ViewSalesRep />} />
+          <Route path="/customers/active" element={<ActiveCustomers />} />
+          <Route path="/customers/inactive" element={<InactiveCustomers />} />
+          <Route path="/customers/suppliers" element={<SupplierList />} />
         </Route>
         <Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
       </Routes>

@@ -285,9 +285,9 @@ export default function ProductSizeList() {
           <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
             <div className="modal-dialog modal-lg modal-dialog-centered">
               <div className="modal-content border-0 shadow" style={{ borderRadius: 16, overflow: 'hidden' }}>
-                <div className="modal-header border-bottom">
-                  <h5 className="modal-title">Item Size Map</h5>
-                  <button type="button" className="btn-close" onClick={() => setShowAssignModal(false)}></button>
+                <div className="modal-header text-white border-0" style={{ background: 'linear-gradient(135deg, #2563eb, #1e40af)' }}>
+                  <h5 className="modal-title fw-bold"><i className="bi bi-rulers me-2"></i>Item Size Map</h5>
+                  <button type="button" className="btn-close btn-close-white" onClick={() => setShowAssignModal(false)}></button>
                 </div>
                 <div className="modal-body" style={{ padding: 24 }}>
                   {assignRows.map((row, i) => (
@@ -340,9 +340,9 @@ export default function ProductSizeList() {
           <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
             <div className="modal-dialog modal-dialog-centered">
               <div className="modal-content border-0 shadow" style={{ borderRadius: 16, overflow: 'hidden' }}>
-                <div className="modal-header border-bottom">
-                  <h5 className="modal-title">Item Size</h5>
-                  <button type="button" className="btn-close" onClick={() => setShowSizeModal(false)}></button>
+                <div className="modal-header text-white border-0" style={{ background: 'linear-gradient(135deg, #2563eb, #1e40af)' }}>
+                  <h5 className="modal-title fw-bold"><i className="bi bi-plus-lg me-2"></i>Item Size</h5>
+                  <button type="button" className="btn-close btn-close-white" onClick={() => setShowSizeModal(false)}></button>
                 </div>
                 <div className="modal-body" style={{ padding: 24 }}>
                   {sizeRows.map((row, i) => (

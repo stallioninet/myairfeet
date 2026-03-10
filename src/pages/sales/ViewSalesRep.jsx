@@ -60,14 +60,14 @@ export default function ViewSalesRep() {
       {/* Top Summary Row */}
       <div className="row g-4 mb-4">
         <div className="col-md-6">
-          <div className="card border-0 shadow-sm h-100" style={{ borderRadius: 12 }}>
-            <div className="card-body d-flex align-items-center gap-3">
-              <div className="rounded-3 d-flex align-items-center justify-content-center" style={{ width: 44, height: 44, background: 'linear-gradient(135deg, #dbeafe, #bfdbfe)', color: '#2563eb' }}>
-                <i className="bi bi-person-badge-fill fs-5"></i>
+          <div className="stat-card h-100">
+            <div className="d-flex align-items-center gap-3">
+              <div className="stat-icon" style={{ background: '#eff6ff', color: '#2563eb' }}>
+                <i className="bi bi-person-badge-fill"></i>
               </div>
               <div>
-                <div className="text-muted small fw-semibold">SALES REP</div>
-                <div className="fw-bold fs-5">{name.toUpperCase()}</div>
+                <div className="stat-label">SALES REP</div>
+                <div className="stat-value">{name.toUpperCase()}</div>
               </div>
             </div>
           </div>
@@ -125,7 +125,7 @@ export default function ViewSalesRep() {
 
                 {/* Rep Info Panel */}
                 <div className="card border mb-4" style={{ borderRadius: 8, overflow: 'hidden', maxWidth: 600 }}>
-                  <div className="card-header d-flex justify-content-between align-items-center text-white py-2 px-3" style={{ background: 'linear-gradient(135deg, #2563eb, #3b82f6)', border: 'none' }}>
+                  <div className="card-header d-flex justify-content-between align-items-center text-white py-2 px-3" style={{ background: 'linear-gradient(135deg, #2563eb, #1e40af)', border: 'none' }}>
                     <span className="fw-semibold" style={{ fontSize: '0.9rem' }}><i className="bi bi-link-45deg me-1"></i> Sales REP Information #{rep.rep_number}</span>
                     <Link to={'/sales-reps/' + id + '/edit'} className="btn btn-sm btn-light py-0 px-2" style={{ fontSize: '0.8rem' }}>
                       <i className="bi bi-pencil me-1"></i>Edit
@@ -205,7 +205,7 @@ export default function ViewSalesRep() {
                   </div>
                 </div>
                 <div className="table-responsive">
-                  <table className="table table-bordered table-hover align-middle mb-0">
+                  <table className="table table-hover align-middle mb-0">
                     <thead className="bg-light"><tr><th style={{ width: 80 }}>Line</th><th>Cust#</th><th>CustName</th><th style={{ width: 100 }}>Action</th></tr></thead>
                     <tbody><tr><td colSpan="4" className="text-center text-muted py-5"><i className="bi bi-building fs-1 d-block mb-2 opacity-25"></i>No customers assigned yet</td></tr></tbody>
                   </table>
@@ -227,7 +227,7 @@ export default function ViewSalesRep() {
                   </div>
                 </div>
                 <div className="table-responsive">
-                  <table className="table table-bordered table-hover align-middle mb-0">
+                  <table className="table table-hover align-middle mb-0">
                     <thead className="bg-light"><tr><th style={{ width: 70 }}>Line</th><th>Customer</th><th>Date</th><th>Po#</th><th>Invoice#</th><th>Qty</th><th>InvTotal</th><th style={{ width: 100 }}>Action</th></tr></thead>
                     <tbody><tr><td colSpan="8" className="text-center text-muted py-5"><i className="bi bi-file-earmark-text fs-1 d-block mb-2 opacity-25"></i>No invoices yet</td></tr></tbody>
                   </table>
@@ -249,7 +249,7 @@ export default function ViewSalesRep() {
                   </div>
                 </div>
                 <div className="table-responsive">
-                  <table className="table table-bordered table-hover align-middle mb-0">
+                  <table className="table table-hover align-middle mb-0">
                     <thead className="bg-light"><tr><th style={{ width: 70 }}>Line</th><th>Invoice #</th><th>Invoice Date</th><th>Qty</th><th>PO Total</th><th>ComTotal</th><th>REPComTotal</th><th>CommPaid</th><th style={{ width: 80 }}>Action</th></tr></thead>
                     <tbody><tr><td colSpan="9" className="text-center text-muted py-5"><i className="bi bi-cash-stack fs-1 d-block mb-2 opacity-25"></i>No commission records yet</td></tr></tbody>
                   </table>

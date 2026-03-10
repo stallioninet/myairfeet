@@ -639,10 +639,13 @@ async function migrate() {
   if (taxRates.length > 0) {
     await db.collection('tax_rates').deleteMany({})
     const docs = taxRates.map(t => ({
-      name: t.tax_name || '',
-      rate: parseFloat(t.tax_rate || t.rate) || 0,
-      state: t.state || '',
-      status: t.status === '1' ? 'active' : 'inactive',
+      old_tax_id: t.sales_tax_id || '',
+      name: t.sales_tax_item_name || '',
+      rate: parseFloat(t.sales_tax_percentage) || 0,
+      factor: parseFloat(t.sales_tax_factor) || 0,
+      status: t.sales_tax_status === '1' ? 'active' : 'inactive',
+      created_at: t.saletax_created_on && t.saletax_created_on !== '0000-00-00 00:00:00' ? new Date(t.saletax_created_on) : null,
+      updated_at: t.salestax_modified_on && t.salestax_modified_on !== '0000-00-00 00:00:00' ? new Date(t.salestax_modified_on) : null,
     }))
     await db.collection('tax_rates').insertMany(docs)
     console.log(`  -> migrated ${docs.length} tax rates`)
@@ -701,8 +704,16 @@ async function migrate() {
   console.log(`\ncost_info: ${costs.length} rows`)
   if (costs.length > 0) {
     await db.collection('cost_info').deleteMany({})
-    await db.collection('cost_info').insertMany(costs)
-    console.log(`  -> migrated ${costs.length} cost info records`)
+    const costDocs = costs.map(c => ({
+      old_cost_id: c.cost_id || '',
+      name: c.items || '',
+      description: c.description || '',
+      status: c.cost_status === '1' ? 'active' : 'inactive',
+      created_at: c.cost_created && c.cost_created !== '0000-00-00 00:00:00' ? new Date(c.cost_created) : null,
+      updated_at: c.cost_modified && c.cost_modified !== '0000-00-00 00:00:00' ? new Date(c.cost_modified) : null,
+    }))
+    await db.collection('cost_info').insertMany(costDocs)
+    console.log(`  -> migrated ${costDocs.length} cost info records`)
   }
 
   // ==========================================
@@ -717,14 +728,41 @@ async function migrate() {
   }
 
   // ==========================================
-  // 32. product_style -> product_styles
+  // 32. product_size -> product_sizes
+  // ==========================================
+  const prodSizes = parseInserts(sql, 'product_size')
+  console.log(`\nproduct_size: ${prodSizes.length} rows`)
+  if (prodSizes.length > 0) {
+    await db.collection('product_sizes').deleteMany({})
+    const sizeDocs = prodSizes.map(s => ({
+      old_size_id: s.size_id || '',
+      name: s.size_name || '',
+      description: s.size_desc || '',
+      status: s.status === '1' ? 'active' : 'inactive',
+      created_at: s.created_on && s.created_on !== '0000-00-00 00:00:00' ? new Date(s.created_on) : null,
+      updated_at: s.modified_on && s.modified_on !== '0000-00-00 00:00:00' ? new Date(s.modified_on) : null,
+    }))
+    await db.collection('product_sizes').insertMany(sizeDocs)
+    console.log(`  -> migrated ${sizeDocs.length} product sizes`)
+  }
+
+  // ==========================================
+  // 33. product_style -> product_styles
   // ==========================================
   const styles = parseInserts(sql, 'product_style')
   console.log(`\nproduct_style: ${styles.length} rows`)
   if (styles.length > 0) {
     await db.collection('product_styles').deleteMany({})
-    await db.collection('product_styles').insertMany(styles)
-    console.log(`  -> migrated ${styles.length} product styles`)
+    const styleDocs = styles.map(s => ({
+      old_style_id: s.style_id || '',
+      name: s.style_name || '',
+      description: s.style_desc || '',
+      status: s.status === '1' ? 'active' : 'inactive',
+      created_at: s.created_on && s.created_on !== '0000-00-00 00:00:00' ? new Date(s.created_on) : null,
+      updated_at: s.modified_on && s.modified_on !== '0000-00-00 00:00:00' ? new Date(s.modified_on) : null,
+    }))
+    await db.collection('product_styles').insertMany(styleDocs)
+    console.log(`  -> migrated ${styleDocs.length} product styles`)
   }
 
   // ==========================================

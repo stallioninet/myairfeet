@@ -112,6 +112,65 @@ export const api = {
   deleteSalesRep: (id) => request(`/sales-reps/${id}`, { method: 'DELETE' }),
   seedSalesReps: () => request('/sales-reps/seed', { method: 'POST' }),
 
+  // Events
+  getEvents: (status) => request('/events' + (status ? '?status=' + status : '')),
+  getEvent: (id) => request(`/events/${id}`),
+  getEventStats: () => request('/events/stats'),
+  createEvent: (data) => request('/events', { method: 'POST', body: JSON.stringify(data) }),
+  updateEvent: (id, data) => request(`/events/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteEvent: (id) => request(`/events/${id}`, { method: 'DELETE' }),
+  getEventTypes: () => request('/events/types'),
+  createEventType: (data) => request('/events/types', { method: 'POST', body: JSON.stringify(data) }),
+  updateEventType: (id, data) => request(`/events/types/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteEventType: (id) => request(`/events/types/${id}`, { method: 'DELETE' }),
+  getEventItems: (id) => request(`/events/${id}/items`),
+  addEventItem: (id, data) => request(`/events/${id}/items`, { method: 'POST', body: JSON.stringify(data) }),
+  deleteEventItem: (itemId) => request(`/events/items/${itemId}`, { method: 'DELETE' }),
+  getEventReceipts: (id) => request(`/events/${id}/receipts`),
+  addEventReceipt: (id, data) => request(`/events/${id}/receipts`, { method: 'POST', body: JSON.stringify(data) }),
+
+  // Tax Rates
+  getTaxRates: () => request('/tax-rates'),
+  getTaxRate: (id) => request(`/tax-rates/${id}`),
+  createTaxRate: (data) => request('/tax-rates', { method: 'POST', body: JSON.stringify(data) }),
+  updateTaxRate: (id, data) => request(`/tax-rates/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteTaxRate: (id) => request(`/tax-rates/${id}`, { method: 'DELETE' }),
+
+  // Product Styles (includes sizes from product_sizes collection)
+  getEventProductSizes: () => request('/product-styles/sizes'),
+  createEventProductSize: (data) => request('/product-styles/sizes', { method: 'POST', body: JSON.stringify(data) }),
+  updateEventProductSize: (id, data) => request(`/product-styles/sizes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteEventProductSize: (id) => request(`/product-styles/sizes/${id}`, { method: 'DELETE' }),
+  getProductStyles: () => request('/product-styles'),
+  createProductStyle: (data) => request('/product-styles', { method: 'POST', body: JSON.stringify(data) }),
+  updateProductStyle: (id, data) => request(`/product-styles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteProductStyle: (id) => request(`/product-styles/${id}`, { method: 'DELETE' }),
+
+  // Cost Info
+  getCostInfo: () => request('/cost-info'),
+  createCostInfo: (data) => request('/cost-info', { method: 'POST', body: JSON.stringify(data) }),
+  updateCostInfo: (id, data) => request(`/cost-info/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteCostInfo: (id) => request(`/cost-info/${id}`, { method: 'DELETE' }),
+
+  // Customers
+  getCustomers: (status) => request('/customers' + (status ? '?status=' + status : '')),
+  getCustomer: (id) => request(`/customers/${id}`),
+  getCustomerStats: () => request('/customers/stats'),
+  getCustomerTypes: () => request('/customers/types'),
+  createCustomer: (data) => request('/customers', { method: 'POST', body: JSON.stringify(data) }),
+  updateCustomer: (id, data) => request(`/customers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deactivateCustomer: (id) => request(`/customers/${id}/deactivate`, { method: 'PUT' }),
+  activateCustomer: (id) => request(`/customers/${id}/activate`, { method: 'PUT' }),
+  deleteCustomer: (id) => request(`/customers/${id}`, { method: 'DELETE' }),
+
+  // Suppliers
+  getSuppliers: (status) => request('/suppliers' + (status ? '?status=' + status : '')),
+  getSupplier: (id) => request(`/suppliers/${id}`),
+  getSupplierStats: () => request('/suppliers/stats'),
+  createSupplier: (data) => request('/suppliers', { method: 'POST', body: JSON.stringify(data) }),
+  updateSupplier: (id, data) => request(`/suppliers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteSupplier: (id) => request(`/suppliers/${id}`, { method: 'DELETE' }),
+
   // Backups
   getBackups: () => request('/backups'),
   getBackupStats: () => request('/backups/stats'),

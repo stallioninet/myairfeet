@@ -130,7 +130,7 @@ export default function CreateSalesRep() {
 
       {/* Main Card */}
       <div className="card border-0 shadow-sm" style={{ borderRadius: 12, overflow: 'hidden' }}>
-        <div className="card-header py-3 px-4 text-white" style={{ background: 'linear-gradient(135deg, #1e3a8a, #2563eb)', border: 'none' }}>
+        <div className="card-header py-3 px-4 text-white" style={{ background: 'linear-gradient(135deg, #2563eb, #1e40af)', border: 'none' }}>
           <div className="d-flex align-items-center gap-2">
             <i className="bi bi-person-plus-fill fs-5"></i>
             <span className="fw-semibold">{isEdit ? 'Edit' : 'Create'} Sales Representative</span>
