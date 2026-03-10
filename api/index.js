@@ -13,6 +13,12 @@ import userActivityRouter from '../server/routes/userActivity.js'
 import userLevelsRouter from '../server/routes/userLevels.js'
 import backupsRouter from '../server/routes/backups.js'
 import salesRepsRouter from '../server/routes/salesReps.js'
+import customersRouter from '../server/routes/customers.js'
+import suppliersRouter from '../server/routes/suppliers.js'
+import eventsRouter from '../server/routes/events.js'
+import taxRatesRouter from '../server/routes/taxRates.js'
+import costInfoRouter from '../server/routes/costInfo.js'
+import productStylesRouter from '../server/routes/productStyles.js'
 
 const app = express()
 
@@ -79,6 +85,12 @@ app.use('/api/user-activity', userActivityRouter)
 app.use('/api/user-levels', userLevelsRouter)
 app.use('/api/backups', backupsRouter)
 app.use('/api/sales-reps', salesRepsRouter)
+app.use('/api/customers', customersRouter)
+app.use('/api/suppliers', suppliersRouter)
+app.use('/api/events', eventsRouter)
+app.use('/api/tax-rates', taxRatesRouter)
+app.use('/api/cost-info', costInfoRouter)
+app.use('/api/product-styles', productStylesRouter)
 
 // Health check
 app.get('/api/health', (req, res) => {
