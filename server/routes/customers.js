@@ -44,12 +44,32 @@ router.get('/stats', async (req, res) => {
   }
 })
 
-// GET single customer
+// GET single customer (with contacts, addresses, emails, assigned reps)
 router.get('/:id', async (req, res) => {
   try {
+    const db = mongoose.connection.db
     const doc = await col().findOne({ _id: new mongoose.Types.ObjectId(req.params.id) })
     if (!doc) return res.status(404).json({ error: 'Customer not found' })
-    res.json(doc)
+
+    const custId = doc._id
+
+    // Fetch related data
+    const [contacts, addresses, emails, repMaps] = await Promise.all([
+      db.collection('customer_contacts').find({ customer: custId }).sort({ display_order: 1 }).toArray(),
+      db.collection('customer_addresses').find({ customer: custId }).toArray(),
+      db.collection('customer_emails').find({ customer: custId }).toArray(),
+      db.collection('cust_sales_rep_map').find({ company_id: doc.legacy_id, status: 1 }).toArray(),
+    ])
+
+    // Get rep names from app_user
+    let assignedReps = []
+    if (repMaps.length > 0) {
+      const repIds = [...new Set(repMaps.map(m => m.sales_rep_id))]
+      const reps = await db.collection('app_user').find({ legacy_id: { $in: repIds } }).toArray()
+      assignedReps = reps.map(r => ({ _id: r._id, name: ((r.first_name || '') + ' ' + (r.last_name || '')).trim(), rep_number: r.user_cust_code || '' }))
+    }
+
+    res.json({ ...doc, contacts, addresses, emails, assignedReps })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

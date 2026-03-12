@@ -177,7 +177,7 @@ export default function UserLevels() {
                 ) : levels.slice((page - 1) * perPage, page * perPage).map((level, index) => (
                   <tr key={level._id} style={level.status === 'inactive' ? { opacity: 0.6 } : {}}>
                     <td className="ps-3 fw-medium">{level.name}</td>
-                    <td className="text-muted">{level.key}</td>
+                    <td><code className="px-2 py-1 rounded" style={{ background: '#f1f5f9', color: '#475569', fontSize: '0.82rem' }}>{level.key}</code></td>
                     <td>
                       <button className="btn btn-sm btn-action btn-outline-primary me-1" title="Edit" onClick={() => openEdit(level)}>
                         <i className="bi bi-pencil"></i>

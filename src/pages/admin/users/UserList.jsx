@@ -30,6 +30,7 @@ export default function UserList() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
+  const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
 
@@ -60,7 +61,13 @@ export default function UserList() {
     }
   }
 
-  const filteredUsers = filter === 'all' ? users : users.filter(u => u.status === filter)
+  const filteredUsers = users.filter(u => {
+    const matchFilter = filter === 'all' || u.status === filter
+    const s = search.toLowerCase()
+    const matchSearch = !search || u.first_name?.toLowerCase().includes(s) || u.last_name?.toLowerCase().includes(s) ||
+      u.email?.toLowerCase().includes(s) || u.level?.toLowerCase().includes(s)
+    return matchFilter && matchSearch
+  })
   const paginatedUsers = filteredUsers.slice((page - 1) * perPage, page * perPage)
   const activeCount = users.filter(u => u.status === 'active').length
   const inactiveCount = users.filter(u => u.status === 'inactive').length
@@ -165,6 +172,17 @@ export default function UserList() {
           </div>
         </div>
         <div className="card-body p-0">
+          <div className="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+            <div className="d-flex align-items-center gap-2">
+              <span className="text-muted small">Show</span>
+              <select className="form-select form-select-sm" style={{ width: 'auto' }} value={perPage} onChange={e => { setPerPage(Number(e.target.value)); setPage(1) }}>
+                {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div className="position-relative" style={{ width: 200 }}>
+              <input type="text" className="form-control form-control-sm" placeholder="Search..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
+            </div>
+          </div>
           <div className="table-responsive">
             <table className="table table-hover mb-0 align-middle">
               <thead className="bg-light">

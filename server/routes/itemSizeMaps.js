@@ -3,10 +3,12 @@ import ItemSizeMap from '../models/ItemSizeMap.js'
 
 const router = express.Router()
 
-// GET all item size maps (populated)
+// GET all item size maps (populated), optionally filter by product_item
 router.get('/', async (req, res) => {
   try {
-    const maps = await ItemSizeMap.find()
+    const filter = {}
+    if (req.query.item_id) filter.product_item = req.query.item_id
+    const maps = await ItemSizeMap.find(filter)
       .populate('product_item')
       .populate('size')
       .sort({ created_at: 1 })

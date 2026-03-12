@@ -33,6 +33,7 @@ export default function ProductGroupList() {
   const [form, setForm] = useState(emptyForm)
   const [productSearch, setProductSearch] = useState('')
   const [saving, setSaving] = useState(false)
+  const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [dragIdx, setDragIdx] = useState(null)
   const [dragOverIdx, setDragOverIdx] = useState(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -83,6 +84,7 @@ export default function ProductGroupList() {
     setEditingId(null)
     setForm(emptyForm)
     setProductSearch('')
+    setShowProductDropdown(false)
     setShowModal(true)
   }
 
@@ -96,6 +98,7 @@ export default function ProductGroupList() {
       status: group.status,
     })
     setProductSearch('')
+    setShowProductDropdown(false)
     setShowModal(true)
   }
 
@@ -151,8 +154,9 @@ export default function ProductGroupList() {
     return allProducts.find(p => p._id === id)
   }
 
-  // Filtered products for modal search
+  // Filtered products for modal search — only show unselected
   const filteredProducts = allProducts.filter(p => {
+    if (form.products.includes(p._id)) return false
     if (!productSearch.trim()) return true
     const s = productSearch.toLowerCase()
     const typeName = getTypeName(p).toLowerCase()
@@ -417,39 +421,61 @@ export default function ProductGroupList() {
                     </div>
                     <div className="col-12">
                       <label className="form-label fw-medium">Select Products</label>
-                      <div className="input-group mb-2">
-                        <span className="input-group-text"><i className="bi bi-search"></i></span>
-                        <input type="text" className="form-control" placeholder="Search products..." value={productSearch} onChange={e => setProductSearch(e.target.value)} />
-                      </div>
-                      <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 10, padding: '8px 0' }}>
-                        {filteredProducts.map(p => {
-                          const typeName = getTypeName(p)
-                          const ts = getTypeStyle(typeName)
-                          return (
-                            <div
-                              key={p._id}
-                              onClick={() => toggleProduct(p._id)}
-                              style={{ display: 'flex', alignItems: 'center', padding: '8px 16px', cursor: 'pointer', transition: 'background .15s' }}
-                              onMouseEnter={e => e.currentTarget.style.background = '#f8faff'}
-                              onMouseLeave={e => e.currentTarget.style.background = ''}
+                      <div style={{ position: 'relative' }}>
+                        <div className="input-group">
+                          <span className="input-group-text"><i className="bi bi-search"></i></span>
+                          <input
+                            type="text"
+                            className="form-control"
+                            placeholder="Click to search and add products..."
+                            value={productSearch}
+                            onChange={e => { setProductSearch(e.target.value); setShowProductDropdown(true) }}
+                            onFocus={() => setShowProductDropdown(true)}
+                          />
+                          {showProductDropdown && (
+                            <button
+                              type="button"
+                              className="btn btn-outline-secondary"
+                              onClick={() => { setShowProductDropdown(false); setProductSearch('') }}
                             >
-                              <input
-                                type="checkbox"
-                                checked={form.products.includes(p._id)}
-                                onChange={() => {}}
-                                style={{ accentColor: 'var(--primary)', width: 16, height: 16, marginRight: 10, cursor: 'pointer' }}
-                              />
-                              <span style={{ flex: 1, fontSize: '.875rem', fontWeight: 500 }}>{p.name}</span>
-                              {typeName && (
-                                <span style={{ fontSize: '.7rem', padding: '2px 8px', borderRadius: 4, fontWeight: 600, background: ts.bg, color: ts.color }}>
-                                  {typeName}
-                                </span>
-                              )}
-                            </div>
-                          )
-                        })}
-                        {filteredProducts.length === 0 && (
-                          <div className="text-center text-muted py-3" style={{ fontSize: '.85rem' }}>No products found</div>
+                              <i className="bi bi-x-lg"></i>
+                            </button>
+                          )}
+                        </div>
+                        {showProductDropdown && (
+                          <div style={{
+                            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+                            maxHeight: 220, overflowY: 'auto',
+                            background: '#fff', border: '1px solid #e2e8f0', borderTop: 'none',
+                            borderRadius: '0 0 10px 10px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                          }}>
+                            {filteredProducts.map(p => {
+                              const typeName = getTypeName(p)
+                              const ts = getTypeStyle(typeName)
+                              return (
+                                <div
+                                  key={p._id}
+                                  onClick={() => { toggleProduct(p._id); setProductSearch('') }}
+                                  style={{ display: 'flex', alignItems: 'center', padding: '8px 16px', cursor: 'pointer', transition: 'background .15s' }}
+                                  onMouseEnter={e => e.currentTarget.style.background = '#f8faff'}
+                                  onMouseLeave={e => e.currentTarget.style.background = ''}
+                                >
+                                  <i className="bi bi-plus-circle text-primary me-2"></i>
+                                  <span style={{ flex: 1, fontSize: '.875rem', fontWeight: 500 }}>{p.name}</span>
+                                  {typeName && (
+                                    <span style={{ fontSize: '.7rem', padding: '2px 8px', borderRadius: 4, fontWeight: 600, background: ts.bg, color: ts.color }}>
+                                      {typeName}
+                                    </span>
+                                  )}
+                                </div>
+                              )
+                            })}
+                            {filteredProducts.length === 0 && (
+                              <div className="text-center text-muted py-3" style={{ fontSize: '.85rem' }}>
+                                {allProducts.length === form.products.length ? 'All products have been selected' : 'No matching products found'}
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>

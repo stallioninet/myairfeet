@@ -5,22 +5,22 @@ import { api } from '../../lib/api'
 import Pagination from '../../components/Pagination'
 import exportCSV from '../../lib/exportCSV'
 
-const avatarColors = ['#2563eb', '#7c3aed', '#06b6d4', '#16a34a', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6']
-
-function hashColor(name) {
-  let h = 0
-  for (let i = 0; i < name.length; i++) { h = ((h << 5) - h) + name.charCodeAt(i); h |= 0 }
-  return avatarColors[Math.abs(h) % avatarColors.length]
-}
-
-function initials(name) {
-  return (name || '').split(' ').map(w => w[0] || '').join('').toUpperCase()
-}
+const avatarColors = [
+  'linear-gradient(135deg, #3b82f6, #2563eb)',
+  'linear-gradient(135deg, #10b981, #059669)',
+  'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+  'linear-gradient(135deg, #f59e0b, #d97706)',
+  'linear-gradient(135deg, #ec4899, #db2777)',
+  'linear-gradient(135deg, #14b8a6, #0d9488)',
+  'linear-gradient(135deg, #6366f1, #4f46e5)',
+  'linear-gradient(135deg, #f43f5e, #e11d48)',
+]
 
 export default function InactiveSalesReps() {
   const [reps, setReps] = useState([])
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0 })
+  const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
   const [reactivateRep, setReactivateRep] = useState(null)
@@ -54,43 +54,63 @@ export default function InactiveSalesReps() {
     }
   }
 
-  function handleExport() {
-    const headers = ['REP #', 'Name', 'Email', 'Phone', 'Territory', 'Commission %', 'City', 'State', 'Status']
-    const rows = reps.map(r => [r.rep_number, r.first_name + ' ' + r.last_name, r.email, r.phone, r.territory, r.commission_rate, r.city, r.state, r.status])
-    exportCSV(rows, headers, 'inactive-sales-reps')
+  function getInitials(first, last) {
+    return ((first?.[0] || '') + (last?.[0] || '')).toUpperCase()
   }
 
-  const totalPages = Math.ceil(reps.length / perPage)
-  const paginatedReps = reps.slice((page - 1) * perPage, page * perPage)
+  function formatDate(dateStr) {
+    if (!dateStr) return null
+    const d = new Date(dateStr)
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+      ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  function timeAgo(dateStr) {
+    if (!dateStr) return 'Never'
+    const diff = Date.now() - new Date(dateStr).getTime()
+    const days = Math.floor(diff / 86400000)
+    if (days < 1) return 'Today'
+    if (days === 1) return 'Yesterday'
+    if (days < 30) return `${days} days ago`
+    const months = Math.floor(days / 30)
+    return `${months} month${months > 1 ? 's' : ''} ago`
+  }
+
+  const filteredReps = reps.filter(r => {
+    const s = search.toLowerCase()
+    return !search || r.first_name?.toLowerCase().includes(s) || r.last_name?.toLowerCase().includes(s) ||
+      r.email?.toLowerCase().includes(s) || r.username?.toLowerCase().includes(s) || r.rep_number?.toLowerCase().includes(s)
+  })
+  const paginatedReps = filteredReps.slice((page - 1) * perPage, page * perPage)
 
   return (
-    <div>
+    <>
       {/* Page Header */}
-      <div className="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-2">
+      <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h2 className="mb-1">Inactive Sales Reps</h2>
           <nav aria-label="breadcrumb">
-            <ol className="breadcrumb mb-0">
-              <li className="breadcrumb-item"><Link to="/dashboard"><i className="bi bi-house-door"></i></Link></li>
-              <li className="breadcrumb-item"><Link to="/sales-reps/active">Sales Reps</Link></li>
-              <li className="breadcrumb-item active">Inactive</li>
+            <ol className="breadcrumb mb-1">
+              <li className="breadcrumb-item"><Link to="/"><i className="bi bi-house-door"></i></Link></li>
+              <li className="breadcrumb-item">Sales</li>
+              <li className="breadcrumb-item active">Inactive Reps</li>
             </ol>
           </nav>
+          <h3 className="mb-0">Inactive Sales Representatives</h3>
         </div>
         <div className="d-flex gap-2">
-          <button className="btn btn-outline-secondary" onClick={handleExport}>
+          <button className="btn btn-outline-primary" onClick={() => exportCSV(
+            filteredReps.map((r, i) => [i + 1, r.rep_number, r.first_name + ' ' + r.last_name, r.username, r.email, r.phone, r.user_type, r.status]),
+            ['#', 'REP #', 'Name', 'Username', 'Email', 'Phone', 'User Type', 'Status'], 'inactive-sales-reps'
+          )}>
             <i className="bi bi-download me-1"></i> Export
           </button>
-          <Link to="/sales-reps/active" className="btn btn-outline-primary">
-            <i className="bi bi-people me-1"></i> Active Reps
-          </Link>
           <Link to="/sales-reps/create" className="btn btn-primary">
             <i className="bi bi-plus-lg me-1"></i> New Sales Rep
           </Link>
         </div>
       </div>
 
-      {/* Stat Cards */}
+      {/* Stats */}
       <div className="row g-3 mb-4">
         {[
           { value: stats.inactive, label: 'Inactive Reps', icon: 'bi-person-dash-fill', bg: '#fef2f2', color: '#ef4444' },
@@ -113,80 +133,138 @@ export default function InactiveSalesReps() {
         ))}
       </div>
 
-      {/* Table */}
-      <div className="card border-0 shadow-sm" style={{ borderRadius: 12, overflow: 'hidden' }}>
-        <div className="card-header py-3 px-4 text-white" style={{ background: 'linear-gradient(135deg, #2563eb, #1e40af)', border: 'none' }}>
-          <div className="d-flex align-items-center gap-2">
-            <i className="bi bi-person-dash fs-5"></i>
-            <span className="fw-semibold">Inactive Sales Representatives</span>
-            <span className="badge bg-white bg-opacity-25 ms-1">{reps.length}</span>
+      {/* Filter Pills */}
+      <div className="filter-pills d-flex gap-2 mb-3">
+        {[
+          { key: 'active', label: 'Active', count: stats.active, badge: 'bg-success text-white', link: '/sales-reps/active' },
+          { key: 'inactive', label: 'Inactive', count: stats.inactive, badge: 'bg-danger text-white', link: '/sales-reps/inactive' },
+        ].map(f => (
+          <Link
+            key={f.key}
+            to={f.link}
+            className={`btn btn-outline-secondary${f.key === 'inactive' ? ' active' : ''}`}
+          >
+            {f.label} <span className={`badge ${f.badge} ms-1`}>{f.count}</span>
+          </Link>
+        ))}
+      </div>
+
+      {/* Sales Reps Table */}
+      <div className="card border-0 shadow-sm">
+        <div className="card-header py-3" style={{ background: 'linear-gradient(135deg, #2563eb, #1e40af)', color: '#fff' }}>
+          <div className="d-flex justify-content-between align-items-center">
+            <h5 className="mb-0"><i className="bi bi-person-dash me-2"></i>Inactive Representatives</h5>
+            <span className="badge bg-white bg-opacity-25 px-3 py-2">{filteredReps.length} reps</span>
           </div>
         </div>
         <div className="card-body p-0">
+          <div className="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+            <div className="d-flex align-items-center gap-2">
+              <span className="text-muted small">Show</span>
+              <select className="form-select form-select-sm" style={{ width: 'auto' }} value={perPage} onChange={e => { setPerPage(Number(e.target.value)); setPage(1) }}>
+                {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div className="position-relative" style={{ width: 200 }}>
+              <input type="text" className="form-control form-control-sm" placeholder="Search..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
+            </div>
+          </div>
           <div className="table-responsive">
-            <table className="table table-hover align-middle mb-0">
+            <table className="table table-hover mb-0 align-middle">
               <thead className="bg-light">
                 <tr>
-                  <th className="ps-4">REP #</th>
+                  <th className="ps-4" style={{ width: 50 }}>#</th>
                   <th>Rep Name</th>
-                  <th>Address</th>
-                  <th>City</th>
-                  <th>Zip</th>
-                  <th>Phone</th>
+                  <th>Username</th>
                   <th>Email</th>
-                  <th>Action</th>
-                  <th className="pe-4">Status</th>
+                  <th>Phone</th>
+                  <th>REP Code</th>
+                  <th>Last Login</th>
+                  <th>Status</th>
+                  <th className="pe-4 text-center" style={{ width: 170 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan="9" className="text-center py-4"><div className="spinner-border spinner-border-sm text-primary"></div> Loading...</td></tr>
-                ) : paginatedReps.length === 0 ? (
-                  <tr><td colSpan="9" className="text-center py-5 text-muted">
-                    <div className="mb-2"><i className="bi bi-person-check fs-1 text-success"></i></div>
-                    No inactive sales reps
-                  </td></tr>
-                ) : paginatedReps.map((r, i) => {
-                  const name = r.first_name + ' ' + r.last_name
-                  return (
-                    <tr key={r._id}>
-                      <td className="ps-4 fw-semibold">{r.rep_number}</td>
-                      <td>
-                        <div className="d-flex align-items-center gap-2">
-                          <div className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold" style={{ width: 36, height: 36, background: hashColor(name), fontSize: '0.75rem', flexShrink: 0 }}>
-                            {initials(name)}
+                  <tr>
+                    <td colSpan="9" className="text-center py-5 text-muted">
+                      <div className="spinner-border spinner-border-sm me-2" role="status"></div>
+                      Loading sales reps...
+                    </td>
+                  </tr>
+                ) : filteredReps.length === 0 ? (
+                  <tr>
+                    <td colSpan="9" className="text-center py-5 text-muted">
+                      <div className="mb-2"><i className="bi bi-person-check fs-1 text-success"></i></div>
+                      No inactive sales reps
+                    </td>
+                  </tr>
+                ) : paginatedReps.map((r, index) => (
+                  <tr key={r._id}>
+                    <td className="ps-4 text-muted">{(page - 1) * perPage + index + 1}</td>
+                    <td>
+                      <div className="d-flex align-items-center gap-2">
+                        <div
+                          className="user-avatar"
+                          style={{
+                            background: avatarColors[index % avatarColors.length],
+                            opacity: 0.6
+                          }}
+                        >
+                          {getInitials(r.first_name, r.last_name)}
+                        </div>
+                        <div>
+                          <div className="fw-medium text-muted">
+                            {r.first_name} {r.last_name}
                           </div>
-                          <span className="fw-semibold">{name}</span>
+                          <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+                            Added {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                          </div>
                         </div>
-                      </td>
-                      <td><span className="small">{r.address || '-'}</span></td>
-                      <td><span className="small">{r.city || '-'}</span></td>
-                      <td><span className="small">{r.zip || '-'}</span></td>
-                      <td><span className="small">{(r.phones && r.phones.length > 0 ? r.phones[0].number + (r.phones[0].ext ? ' x' + r.phones[0].ext : '') : r.phone) || '-'}</span></td>
-                      <td><a href={'mailto:' + r.email} className="text-decoration-none small">{r.email}</a></td>
-                      <td>
-                        <div className="d-flex gap-1">
-                          <Link to={'/sales-reps/' + r._id} className="btn btn-sm btn-action btn-outline-info" title="View">
-                            <i className="bi bi-eye"></i>
-                          </Link>
-                          <Link to={'/sales-reps/' + r._id + '/edit'} className="btn btn-sm btn-action btn-outline-primary" title="Edit">
-                            <i className="bi bi-pencil"></i>
-                          </Link>
-                          <button className="btn btn-sm btn-action btn-outline-success" title="Reactivate" onClick={() => setReactivateRep(r)}>
-                            <i className="bi bi-arrow-counterclockwise"></i>
-                          </button>
-                        </div>
-                      </td>
-                      <td className="pe-4"><span className="badge badge-inactive">Inactive</span></td>
-                    </tr>
-                  )
-                })}
+                      </div>
+                    </td>
+                    <td><span className="small text-muted">{r.username || '-'}</span></td>
+                    <td>
+                      <a href={`mailto:${r.email}`} className="text-decoration-none text-muted">
+                        {r.email}
+                      </a>
+                    </td>
+                    <td><span className="small text-muted">{r.phone || '-'}{r.extension ? ' x' + r.extension : ''}</span></td>
+                    <td><code className="px-2 py-1 rounded" style={{ background: '#f1f5f9', color: '#475569', fontSize: '0.82rem' }}>{r.rep_number || '-'}</code></td>
+                    <td>
+                      {r.last_login ? (
+                        <>
+                          <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                            {formatDate(r.last_login)}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-light)' }}>
+                            {timeAgo(r.last_login)}
+                          </div>
+                        </>
+                      ) : (
+                        <span className="text-muted" style={{ fontSize: '0.82rem' }}>Never</span>
+                      )}
+                    </td>
+                    <td>
+                      <span className="badge badge-inactive">Inactive</span>
+                    </td>
+                    <td className="pe-4 text-center">
+                      <Link to={'/sales-reps/' + r._id} className="btn btn-sm btn-action btn-outline-info me-1" title="View">
+                        <i className="bi bi-eye"></i>
+                      </Link>
+                      <Link to={'/sales-reps/' + r._id + '/edit'} className="btn btn-sm btn-action btn-outline-primary me-1" title="Edit">
+                        <i className="bi bi-pencil"></i>
+                      </Link>
+                      <button className="btn btn-sm btn-action btn-outline-success" title="Reactivate" onClick={() => setReactivateRep(r)}>
+                        <i className="bi bi-arrow-counterclockwise"></i>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
-          {reps.length > 0 && (
-            <Pagination page={page} totalPages={totalPages} perPage={perPage} total={reps.length} onPageChange={setPage} onPerPageChange={v => { setPerPage(v); setPage(1) }} />
-          )}
+          <Pagination total={filteredReps.length} page={page} perPage={perPage} onPageChange={setPage} onPerPageChange={setPerPage} />
         </div>
       </div>
 
@@ -211,6 +289,6 @@ export default function InactiveSalesReps() {
           </div>
         </div>
       </>)}
-    </div>
+    </>
   )
 }

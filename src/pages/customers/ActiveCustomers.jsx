@@ -281,9 +281,9 @@ export default function ActiveCustomers() {
                     {c.customer_type && <span className="badge bg-primary-subtle text-primary rounded-pill px-2">{typeNameMap[c.customer_type] || c.customer_type}</span>}
                   </td>
                   <td className="pe-4 text-center">
-                    <button className="btn btn-sm btn-action btn-outline-info me-1" title="View" onClick={() => setViewCustomer(c)}>
+                    <Link to={'/customers/' + c._id} className="btn btn-sm btn-action btn-outline-info me-1" title="View">
                       <i className="bi bi-eye"></i>
-                    </button>
+                    </Link>
                     <button className="btn btn-sm btn-action btn-outline-warning me-1" title="Deactivate" onClick={() => setDeactivateCustomer(c)}>
                       <i className="bi bi-pause-circle"></i>
                     </button>

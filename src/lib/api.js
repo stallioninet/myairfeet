@@ -49,6 +49,7 @@ export const api = {
   deactivateProduct: (id) => request(`/products/${id}/deactivate`, { method: 'PUT' }),
   activateProduct: (id) => request(`/products/${id}/activate`, { method: 'PUT' }),
   deleteProduct: (id) => request(`/products/${id}`, { method: 'DELETE' }),
+  reorderProducts: (order) => request('/products/reorder/bulk', { method: 'PUT', body: JSON.stringify({ order }) }),
 
   // Product Sizes
   getProductSizes: () => request('/product-sizes'),
@@ -60,7 +61,7 @@ export const api = {
   deleteProductSize: (id) => request(`/product-sizes/${id}`, { method: 'DELETE' }),
 
   // Item Size Maps
-  getItemSizeMaps: () => request('/item-size-maps'),
+  getItemSizeMaps: (itemId) => request('/item-size-maps' + (itemId ? '?item_id=' + itemId : '')),
   createItemSizeMaps: (data) => request('/item-size-maps', { method: 'POST', body: JSON.stringify(data) }),
   updateItemSizeMap: (id, data) => request(`/item-size-maps/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteItemSizeMap: (id) => request(`/item-size-maps/${id}`, { method: 'DELETE' }),
@@ -104,6 +105,11 @@ export const api = {
   // Sales Reps
   getSalesReps: (status) => request('/sales-reps' + (status ? '?status=' + status : '')),
   getSalesRep: (id) => request(`/sales-reps/${id}`),
+  getSalesRepCustomers: (id) => request(`/sales-reps/${id}/customers`),
+  getSalesRepInvoices: (id) => request(`/sales-reps/${id}/invoices`),
+  getSalesRepCommissions: (id) => request(`/sales-reps/${id}/commissions`),
+  getSalesRepCommissionStats: (id) => request(`/sales-reps/${id}/commission-stats`),
+  getInvoiceDetail: (invoiceId) => request(`/sales-reps/invoice/${invoiceId}`),
   getSalesRepStats: () => request('/sales-reps/stats'),
   createSalesRep: (data) => request('/sales-reps', { method: 'POST', body: JSON.stringify(data) }),
   updateSalesRep: (id, data) => request(`/sales-reps/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

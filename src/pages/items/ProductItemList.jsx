@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../../lib/api'
 import Pagination from '../../components/Pagination'
 import exportCSV from '../../lib/exportCSV'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 const typeStyles = {
   Footwear:    { bg: '#dbeafe', color: '#1d4ed8', icon: 'bi-shoe' },
@@ -14,7 +18,26 @@ const typeStyles = {
 
 const emptyForm = { name: '', item_type: '', unit_price: '', base_price: '', notes: '', status: 'active' }
 
+function SortableRow({ id, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    background: isDragging ? '#eff6ff' : undefined,
+  }
+  return (
+    <tr ref={setNodeRef} style={style} {...attributes}>
+      <td className="ps-3 text-center" style={{ width: 40, cursor: 'grab' }} {...listeners}>
+        <i className="bi bi-grip-vertical text-muted"></i>
+      </td>
+      {children}
+    </tr>
+  )
+}
+
 export default function ProductItemList() {
+  const navigate = useNavigate()
   const [products, setProducts] = useState([])
   const [itemTypes, setItemTypes] = useState([])
   const [loading, setLoading] = useState(true)
@@ -28,6 +51,8 @@ export default function ProductItemList() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   useEffect(() => {
     fetchData()
@@ -43,6 +68,23 @@ export default function ProductItemList() {
       toast.error('Failed to load: ' + err.message)
     }
     setLoading(false)
+  }
+
+  async function handleDragEnd(event) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = products.findIndex(p => p._id === active.id)
+    const newIndex = products.findIndex(p => p._id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    const reordered = arrayMove(products, oldIndex, newIndex)
+    setProducts(reordered)
+    try {
+      const order = reordered.map((p, i) => ({ id: p._id, sort_order: i }))
+      await api.reorderProducts(order)
+    } catch (err) {
+      toast.error('Failed to save order')
+      fetchData()
+    }
   }
 
   // Get type name from product
@@ -250,85 +292,84 @@ export default function ProductItemList() {
           </div>
         </div>
         <div className="card-body p-0">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <div className="table-responsive">
             <table className="table table-hover mb-0 align-middle">
               <thead className="bg-light">
                 <tr>
-                  <th className="ps-4" style={{ width: 50 }}>#</th>
-                  <th>Product Name</th>
-                  <th>Item Type</th>
+                  <th style={{ width: 40 }}></th>
+                  <th style={{ width: 70 }}>List #</th>
+                  <th>Item Name</th>
                   <th>Unit Price</th>
                   <th>Base Price</th>
+                  <th>Item Detail</th>
+                  <th className="pe-4 text-center" style={{ width: 170 }}>Action</th>
                   <th>Status</th>
-                  <th className="pe-4 text-center" style={{ width: 170 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan="7" className="text-center py-5 text-muted">
+                  <tr><td colSpan="8" className="text-center py-5 text-muted">
                     <div className="spinner-border spinner-border-sm me-2"></div>Loading...
                   </td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan="7" className="text-center py-5 text-muted">No products found</td></tr>
-                ) : filtered.slice((page - 1) * perPage, page * perPage).map((product, index) => {
-                  const typeName = getTypeName(product)
-                  const style = getTypeStyle(typeName)
-                  const isInactive = product.status === 'inactive'
-                  return (
-                    <tr key={product._id} style={{ opacity: isInactive ? 0.6 : 1 }}>
-                      <td className="ps-4 text-muted">{(page - 1) * perPage + index + 1}</td>
-                      <td><span className="fw-semibold" style={{ color: isInactive ? '#94a3b8' : 'var(--text-primary)' }}>{product.name}</span></td>
-                      <td>
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 5,
-                          padding: '4px 12px', borderRadius: 8,
-                          fontSize: '.78rem', fontWeight: 600,
-                          background: style.bg, color: style.color
-                        }}>
-                          <i className={`bi ${style.icon}`}></i> {typeName}
-                        </span>
-                      </td>
-                      <td>
-                        {product.unit_price > 0
-                          ? <span style={{ fontWeight: 700, fontSize: '.95rem' }}>${product.unit_price.toFixed(2)}</span>
-                          : <span style={{ color: 'var(--text-light)', fontStyle: 'italic', fontWeight: 500 }}>$0.00</span>
-                        }
-                      </td>
-                      <td>
-                        {product.base_price > 0
-                          ? <span style={{ fontWeight: 700, fontSize: '.95rem' }}>${product.base_price.toFixed(2)}</span>
-                          : <span style={{ color: 'var(--text-light)', fontStyle: 'italic', fontWeight: 500 }}>$0.00</span>
-                        }
-                      </td>
-                      <td>
-                        <span className={`badge badge-${product.status}`}>
-                          {product.status === 'active' ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="pe-4 text-center">
-                        <button className="btn btn-sm btn-action btn-outline-primary me-1" title="Edit" onClick={() => openEdit(product)}>
-                          <i className="bi bi-pencil"></i>
-                        </button>
-                        <button className="btn btn-sm btn-action btn-outline-info me-1" title="Duplicate" onClick={() => handleDuplicate(product)}>
-                          <i className="bi bi-copy"></i>
-                        </button>
-                        <button
-                          className={`btn btn-sm btn-action ${isInactive ? 'btn-outline-success' : 'btn-outline-warning'} me-1`}
-                          title={isInactive ? 'Activate' : 'Deactivate'}
-                          onClick={() => handleToggleStatus(product)}
-                        >
-                          <i className={`bi ${isInactive ? 'bi-check-circle' : 'bi-pause-circle'}`}></i>
-                        </button>
-                        <button className="btn btn-sm btn-action btn-outline-danger" title="Delete" onClick={() => openDeleteModal(product)}>
-                          <i className="bi bi-trash"></i>
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
+                  <tr><td colSpan="8" className="text-center py-5 text-muted">No products found</td></tr>
+                ) : (
+                  <SortableContext items={filtered.slice((page - 1) * perPage, page * perPage).map(p => p._id)} strategy={verticalListSortingStrategy}>
+                    {filtered.slice((page - 1) * perPage, page * perPage).map((product, index) => {
+                      const typeName = getTypeName(product)
+                      const style = getTypeStyle(typeName)
+                      const isInactive = product.status === 'inactive'
+                      return (
+                        <SortableRow key={product._id} id={product._id}>
+                          <td className="text-muted">{(page - 1) * perPage + index + 1}</td>
+                          <td><span className="fw-semibold" style={{ color: isInactive ? '#94a3b8' : 'var(--text-primary)' }}>{product.name}</span></td>
+                          <td>
+                            {product.unit_price > 0
+                              ? <span style={{ fontWeight: 700, fontSize: '.95rem' }}>${product.unit_price.toFixed(2)}</span>
+                              : <span style={{ color: 'var(--text-light)', fontStyle: 'italic', fontWeight: 500 }}>$0.00</span>
+                            }
+                          </td>
+                          <td>
+                            {product.base_price > 0
+                              ? <span style={{ fontWeight: 700, fontSize: '.95rem' }}>${product.base_price.toFixed(2)}</span>
+                              : <span style={{ color: 'var(--text-light)', fontStyle: 'italic', fontWeight: 500 }}>$0.00</span>
+                            }
+                          </td>
+                          <td>
+                            <button className="btn btn-sm btn-action btn-outline-info" title="View Sizes" onClick={() => navigate(`/items/sizes/${product._id}`)}>
+                              <i className="bi bi-eye"></i>
+                            </button>
+                          </td>
+                          <td className="pe-4 text-center">
+                            <button className="btn btn-sm btn-action btn-outline-primary me-1" title="Edit" onClick={() => openEdit(product)}>
+                              <i className="bi bi-pencil"></i>
+                            </button>
+                            <button
+                              className={`btn btn-sm btn-action ${isInactive ? 'btn-outline-success' : 'btn-outline-warning'} me-1`}
+                              title={isInactive ? 'Activate' : 'Deactivate'}
+                              onClick={() => handleToggleStatus(product)}
+                            >
+                              <i className={`bi ${isInactive ? 'bi-check-circle' : 'bi-pause-circle'}`}></i>
+                            </button>
+                            <button className="btn btn-sm btn-action btn-outline-danger" title="Delete" onClick={() => openDeleteModal(product)}>
+                              <i className="bi bi-trash"></i>
+                            </button>
+                          </td>
+                          <td>
+                            <span className={`badge badge-${product.status}`}>
+                              {product.status === 'active' ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                        </SortableRow>
+                      )
+                    })}
+                  </SortableContext>
+                )}
               </tbody>
             </table>
           </div>
+          </DndContext>
           <Pagination total={filtered.length} page={page} perPage={perPage} onPageChange={setPage} onPerPageChange={setPerPage} />
         </div>
       </div>

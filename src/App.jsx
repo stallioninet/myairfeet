@@ -19,9 +19,11 @@ import ActiveSalesReps from './pages/sales/ActiveSalesReps'
 import InactiveSalesReps from './pages/sales/InactiveSalesReps'
 import CreateSalesRep from './pages/sales/CreateSalesRep'
 import ViewSalesRep from './pages/sales/ViewSalesRep'
+import ViewCustomer from './pages/customers/ViewCustomer'
 import ActiveCustomers from './pages/customers/ActiveCustomers'
 import InactiveCustomers from './pages/customers/InactiveCustomers'
 import SupplierList from './pages/customers/SupplierList'
+import ItemSizesView from './pages/items/ItemSizesView'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -68,6 +70,7 @@ function App() {
           <Route path="/admin/backup" element={<BackupManagement />} />
           <Route path="/events" element={<EventList />} />
           <Route path="/items" element={<ItemsHub />} />
+          <Route path="/items/sizes/:id" element={<ItemSizesView />} />
           <Route path="/sales-reps/active" element={<ActiveSalesReps />} />
           <Route path="/sales-reps/inactive" element={<InactiveSalesReps />} />
           <Route path="/sales-reps/create" element={<CreateSalesRep />} />
@@ -76,6 +79,7 @@ function App() {
           <Route path="/customers/active" element={<ActiveCustomers />} />
           <Route path="/customers/inactive" element={<InactiveCustomers />} />
           <Route path="/customers/suppliers" element={<SupplierList />} />
+          <Route path="/customers/:id" element={<ViewCustomer />} />
         </Route>
         <Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
       </Routes>

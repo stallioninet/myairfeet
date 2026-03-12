@@ -6,6 +6,7 @@ const productItemSchema = new mongoose.Schema({
   unit_price: { type: Number, default: 0 },
   base_price: { type: Number, default: 0 },
   notes: { type: String, default: '' },
+  sort_order: { type: Number, default: 0 },
   status: {
     type: String,
     enum: ['active', 'inactive'],

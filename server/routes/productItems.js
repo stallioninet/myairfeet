@@ -6,7 +6,7 @@ const router = express.Router()
 // GET all product items (populated with item type)
 router.get('/', async (req, res) => {
   try {
-    const products = await ProductItem.find().populate('item_type').sort({ created_at: 1 })
+    const products = await ProductItem.find().populate('item_type').sort({ sort_order: 1, created_at: 1 })
     res.json(products)
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -85,6 +85,24 @@ router.put('/:id/activate', async (req, res) => {
     const product = await ProductItem.findByIdAndUpdate(req.params.id, { status: 'active' }, { new: true }).populate('item_type')
     if (!product) return res.status(404).json({ error: 'Product not found' })
     res.json(product)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// PUT reorder products
+router.put('/reorder/bulk', async (req, res) => {
+  try {
+    const { order } = req.body // array of { id, sort_order }
+    if (!Array.isArray(order)) return res.status(400).json({ error: 'order array required' })
+    const ops = order.map(item => ({
+      updateOne: {
+        filter: { _id: item.id },
+        update: { $set: { sort_order: item.sort_order } }
+      }
+    }))
+    await ProductItem.bulkWrite(ops)
+    res.json({ message: 'Order updated' })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
