@@ -109,4 +109,9 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' })
 })
 
+// Catch-all 404 for /api/* routes - return JSON instead of HTML
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ error: 'Route not found', path: req.originalUrl })
+})
+
 export default app

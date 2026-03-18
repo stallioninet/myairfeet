@@ -380,6 +380,15 @@ router.get('/:id/history', async (req, res) => {
         .map(p => p.commission_paid_date)
         .sort((a, b) => new Date(b) - new Date(a))
 
+      // Balance status: 0=zero, 1=partial, 2=fully paid
+      const totalReceived = pays.reduce((s, p) => s + (parseFloat(p.received_amt) || 0), 0)
+      const netAmt = parseFloat(inv.net_amount) || 0
+      const balanceAmt = totalReceived > 0 && netAmt <= totalReceived ? 2 : totalReceived > 0 ? 1 : 0
+
+      // Parse item totals to numbers
+      const parsedItemTotals = {}
+      Object.entries(itemTotals).forEach(([k, v]) => { parsedItemTotals[k] = parseFloat(v) || 0 })
+
       return {
         line: idx + 1,
         po_id: inv.legacy_id,
@@ -387,9 +396,12 @@ router.get('/:id/history', async (req, res) => {
         invoice_date: inv.invoice_date,
         total_qty: inv.total_qty || 0,
         po_total: inv.net_amount || 0,
-        comm_total: commTotal,
+        comm_total: parseFloat(commTotal) || 0,
+        comm_id: sum._id || null,
+        comm_legacy_id: sum.legacy_id || null,
+        balance_amt: balanceAmt,
         rep_amounts: repAmounts,
-        item_totals: itemTotals,
+        item_totals: parsedItemTotals,
         comm_paid_dates: paidDates,
       }
     })

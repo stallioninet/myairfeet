@@ -248,7 +248,9 @@ router.post('/:id/customer-po', async (req, res) => {
 // GET single invoice with items
 router.get('/:id', async (req, res) => {
   try {
-    const inv = await col().findOne({ _id: new mongoose.Types.ObjectId(req.params.id) })
+    let inv
+    try { inv = await col().findOne({ _id: new mongoose.Types.ObjectId(req.params.id) }) } catch {}
+    if (!inv) inv = await col().findOne({ legacy_id: parseInt(req.params.id) })
     if (!inv) return res.status(404).json({ error: 'Invoice not found' })
 
     // Get customer info

@@ -19,7 +19,7 @@ export default function Reports() {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
   const [years, setYears] = useState([])
-  const [filterYear, setFilterYear] = useState('')
+  const [filterYear, setFilterYear] = useState(String(new Date().getFullYear()))
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [search, setSearch] = useState('')
@@ -453,32 +453,36 @@ export default function Reports() {
   }
 
   function renderRepYearTable() {
-    // Build chart data: group by rep, show sales per year
-    const repChartData = {}
+    // Build chart data: group by rep, show commission per year
+    const repCommData = {}
+    const repSalesData = {}
     const chartYears = [...new Set(filtered.map(r => r.year))].sort()
     filtered.forEach(r => {
-      if (!repChartData[r.rep_name]) repChartData[r.rep_name] = { years: {} }
-      repChartData[r.rep_name].years[r.year] = (repChartData[r.rep_name].years[r.year] || 0) + (r.total_sales || 0)
+      if (!repCommData[r.rep_name]) { repCommData[r.rep_name] = { years: {} }; repSalesData[r.rep_name] = { years: {} } }
+      repCommData[r.rep_name].years[r.year] = (repCommData[r.rep_name].years[r.year] || 0) + (r.total_commission || 0)
+      repSalesData[r.rep_name].years[r.year] = (repSalesData[r.rep_name].years[r.year] || 0) + (r.total_sales || 0)
     })
-    const maxSales = Math.max(...Object.values(repChartData).flatMap(r => Object.values(r.years)), 1)
+    const maxComm = Math.max(...Object.values(repCommData).flatMap(r => Object.values(r.years)), 1)
+    const maxSales = Math.max(...Object.values(repSalesData).flatMap(r => Object.values(r.years)), 1)
     const chartColors = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16']
 
     return (<>
-      {/* Chart */}
-      {Object.keys(repChartData).length > 0 && (
+      {/* Year Commission Chart */}
+      {Object.keys(repCommData).length > 0 && (
         <div className="px-3 py-3" style={{ borderBottom: '1px solid #e5e7eb' }}>
-          <h6 className="fw-bold mb-3"><i className="bi bi-bar-chart me-2"></i>Sales by Rep & Year</h6>
+          <h6 className="fw-bold mb-3"><i className="bi bi-bar-chart me-2"></i>Year Commission Chart</h6>
           <div style={{ overflowX: 'auto' }}>
-            <div className="d-flex gap-4 align-items-end" style={{ minHeight: 200, paddingBottom: 30, minWidth: Object.keys(repChartData).length * 120 }}>
-              {Object.entries(repChartData).map(([repName, data], ri) => (
+            <div className="d-flex gap-4 align-items-end" style={{ minHeight: 220, paddingBottom: 30, minWidth: Object.keys(repCommData).length * 120 }}>
+              {Object.entries(repCommData).map(([repName, data], ri) => (
                 <div key={ri} className="text-center" style={{ flex: '0 0 auto', minWidth: 80 }}>
-                  <div className="d-flex gap-1 align-items-end justify-content-center" style={{ height: 160 }}>
+                  <div className="d-flex gap-1 align-items-end justify-content-center" style={{ height: 180 }}>
                     {chartYears.map((y, yi) => {
-                      const val = data.years[y] || 0
-                      const pct = Math.max((val / maxSales) * 100, 2)
+                      const commVal = data.years[y] || 0
+                      const salesVal = repSalesData[repName]?.years[y] || 0
+                      const pct = Math.max((commVal / maxComm) * 100, 2)
                       return (
-                        <div key={y} title={`${y}: ${fmtMoney(val)}`} style={{
-                          width: 18,
+                        <div key={y} title={`${repName} ${y}\nCommission: ${fmtMoney(commVal)}\nSales: ${fmtMoney(salesVal)}`} style={{
+                          width: 20,
                           height: `${pct}%`,
                           background: chartColors[yi % chartColors.length],
                           borderRadius: '3px 3px 0 0',
@@ -486,16 +490,56 @@ export default function Reports() {
                           transition: 'height 0.3s',
                           position: 'relative',
                         }}>
-                          {pct > 15 && <span style={{ position: 'absolute', top: 2, left: '50%', transform: 'translateX(-50)', fontSize: 8, color: '#fff', whiteSpace: 'nowrap' }}>{y}</span>}
+                          {pct > 20 && <span style={{ position: 'absolute', top: 2, left: '50%', transform: 'translateX(-50%)', fontSize: 7, color: '#fff', whiteSpace: 'nowrap' }}>{fmtMoney(commVal).replace('$', '')}</span>}
                         </div>
                       )
                     })}
                   </div>
-                  <div style={{ fontSize: 10, color: '#555', marginTop: 4, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={repName}>{repName}</div>
+                  <div style={{ fontSize: 10, color: '#555', marginTop: 4, maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={repName}>{repName}</div>
                 </div>
               ))}
             </div>
             {/* Legend */}
+            <div className="d-flex gap-3 mt-2 flex-wrap">
+              {chartYears.map((y, i) => (
+                <div key={y} className="d-flex align-items-center gap-1" style={{ fontSize: 11 }}>
+                  <div style={{ width: 12, height: 12, borderRadius: 2, background: chartColors[i % chartColors.length] }}></div>
+                  <span>{y}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Year Sales Chart */}
+      {Object.keys(repSalesData).length > 0 && (
+        <div className="px-3 py-3" style={{ borderBottom: '1px solid #e5e7eb' }}>
+          <h6 className="fw-bold mb-3"><i className="bi bi-graph-up me-2"></i>Year Sales Chart</h6>
+          <div style={{ overflowX: 'auto' }}>
+            <div className="d-flex gap-4 align-items-end" style={{ minHeight: 220, paddingBottom: 30, minWidth: Object.keys(repSalesData).length * 120 }}>
+              {Object.entries(repSalesData).map(([repName, data], ri) => (
+                <div key={ri} className="text-center" style={{ flex: '0 0 auto', minWidth: 80 }}>
+                  <div className="d-flex gap-1 align-items-end justify-content-center" style={{ height: 180 }}>
+                    {chartYears.map((y, yi) => {
+                      const val = data.years[y] || 0
+                      const pct = Math.max((val / maxSales) * 100, 2)
+                      return (
+                        <div key={y} title={`${repName} ${y}: ${fmtMoney(val)}`} style={{
+                          width: 20,
+                          height: `${pct}%`,
+                          background: chartColors[yi % chartColors.length],
+                          borderRadius: '3px 3px 0 0',
+                          cursor: 'pointer',
+                          transition: 'height 0.3s',
+                        }} />
+                      )
+                    })}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#555', marginTop: 4, maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={repName}>{repName}</div>
+                </div>
+              ))}
+            </div>
             <div className="d-flex gap-3 mt-2 flex-wrap">
               {chartYears.map((y, i) => (
                 <div key={y} className="d-flex align-items-center gap-1" style={{ fontSize: 11 }}>
@@ -596,7 +640,7 @@ export default function Reports() {
   }
 
   return (
-    <div>
+    <div style={{ maxWidth: 'calc(100vw - 260px)', overflowX: 'hidden' }}>
       {/* Header */}
       <div className="d-flex justify-content-between align-items-center mb-3">
         <div>
@@ -801,14 +845,14 @@ export default function Reports() {
       </div>
 
       {/* Table */}
-      <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
+      <div className="card border-0 shadow-sm rounded-4" style={{ overflow: 'hidden' }}>
         <div className="card-header py-3 border-0" style={{ background: gradients[tab], color: '#fff' }}>
           <div className="d-flex justify-content-between align-items-center">
             <h5 className="mb-0"><i className={`bi ${TABS.find(t => t.key === tab)?.icon} me-2`}></i>{TABS.find(t => t.key === tab)?.label} Report</h5>
             <span className="badge bg-white bg-opacity-25 px-3 py-2">{filtered.length} records</span>
           </div>
         </div>
-        <div className="table-responsive" id="report-table-area">
+        <div style={{ overflowX: 'auto' }} id="report-table-area">
           {loading ? (
             <div className="text-center py-5"><div className="spinner-border text-primary"></div><p className="mt-2 text-muted">Loading report...</p></div>
           ) : filtered.length === 0 ? (

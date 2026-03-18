@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../../lib/api'
@@ -30,6 +30,7 @@ export default function ViewCustomer() {
   const [selectedReps, setSelectedReps] = useState([])
   const [repDropdownOpen, setRepDropdownOpen] = useState(false)
   const [repSearch, setRepSearch] = useState('')
+  const [pendingStatus, setPendingStatus] = useState(null)
   const [inlineEdit, setInlineEdit] = useState(null) // { field, value }
   const [inlineSaving, setInlineSaving] = useState(false)
   const [editingNotes, setEditingNotes] = useState(false)
@@ -55,6 +56,17 @@ export default function ViewCustomer() {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [histPage, setHistPage] = useState(0)
   const histPerPage = 10
+  // Commission popup
+  const [showCommPopup, setShowCommPopup] = useState(null) // { mode: 'add'|'edit'|'view', po_id, comm_id }
+  const [commPopupData, setCommPopupData] = useState(null)
+  const [commPopupLoading, setCommPopupLoading] = useState(false)
+  const [commRepRows, setCommRepRows] = useState([])
+  const [commSaving, setCommSaving] = useState(false)
+  // Payment popup inside View Commission
+  const [showPayPopup, setShowPayPopup] = useState(false)
+  const [payForm, setPayForm] = useState({ commission_paid_date: '', received_amount: '', received_date: '', paid_mode: '', partial_comm_total: '', mark_paid: false })
+  const [payRepAmounts, setPayRepAmounts] = useState({})
+  const [paySaving, setPaySaving] = useState(false)
   const [commData, setCommData] = useState(null)
   const [commLoading, setCommLoading] = useState(false)
   const [commExpanded, setCommExpanded] = useState(null)
@@ -343,6 +355,143 @@ export default function ViewCustomer() {
     }
   }, [activeTab, id, invYear])
 
+  // ── Commission Popup functions ──
+  const [commCalcMode, setCommCalcMode] = useState('default')
+  const [commItems, setCommItems] = useState([])
+  const [commGrid, setCommGrid] = useState({}) // grid[itemIdx][repId] = { base, commission, percent }
+
+  async function openAddCommission(poId) {
+    setShowCommPopup({ mode: 'add', po_id: poId })
+    setCommPopupLoading(true)
+    setCommCalcMode('default')
+    try {
+      // Get invoice by legacy_id (po_id)
+      const inv = await api.getInvoice(poId)
+      setCommPopupData({ invoice: inv, items: inv.items || [], company_name: inv.company_name || cust?.company_name })
+      // Get assigned reps for this customer
+      const assignedReps = cust?.assignedReps || []
+      let reps = []
+      if (assignedReps.length > 0) {
+        const allRepsData = await api.getSalesReps('active')
+        reps = (allRepsData || []).filter(r => assignedReps.some(ar => String(ar.rep_number) === String(r.rep_number) || String(ar._id) === String(r._id)))
+        if (reps.length === 0) reps = allRepsData.slice(0, 5)
+      } else {
+        const allRepsData = await api.getSalesReps('active')
+        reps = allRepsData.slice(0, 5)
+      }
+      setCommRepRows(reps.map(r => ({ sales_rep_id: r.legacy_id, rep_name: `${r.first_name || ''} ${r.last_name || ''}`.trim(), rep_code: r.rep_number || r.user_cust_code || '' })))
+      // Build items from PO items
+      const items = (inv.items || []).filter(it => it.bo_option !== 'yes')
+      setCommItems(items)
+      // Init grid
+      const g = {}
+      items.forEach((it, idx) => { g[idx] = {}; reps.forEach(r => { g[idx][r.legacy_id] = { base: String(it.unit_cost || ''), commission: '', percent: '' } }) })
+      setCommGrid(g)
+    } catch (err) { toast.error(err.message) }
+    setCommPopupLoading(false)
+  }
+
+  async function openViewCommission(commId) {
+    setShowCommPopup({ mode: 'view', comm_id: commId })
+    setCommPopupLoading(true)
+    try { setCommPopupData(await api.getCommission(commId)) } catch (err) { toast.error(err.message) }
+    setCommPopupLoading(false)
+  }
+
+  async function openEditCommission(commId) {
+    setShowCommPopup({ mode: 'edit', comm_id: commId })
+    setCommPopupLoading(true)
+    try {
+      const data = await api.getCommission(commId)
+      setCommPopupData(data)
+      setCommCalcMode(data.save_status || 'default')
+      const reps = (data.details || []).map(d => ({ sales_rep_id: d.sales_rep_id, rep_name: d.rep_name || '', rep_code: d.rep_code || '' }))
+      setCommRepRows(reps)
+      const items = data.items || []
+      setCommItems(items)
+      const g = {}
+      items.forEach((it, idx) => {
+        g[idx] = {}
+        const itemId = it.item_id || it.legacy_id
+        const itemDet = (data.commItemDets || []).find(d => d.item_id === itemId)
+        reps.forEach(r => {
+          const rd = (data.commRepDets || []).find(d => d.item_id === itemId && d.sales_rep_id === parseInt(r.sales_rep_id))
+          g[idx][r.sales_rep_id] = { base: String(itemDet?.base_price ?? it.unit_cost ?? ''), commission: String(rd?.commission_price || ''), percent: String(rd?.commission_price_percentage || '') }
+        })
+      })
+      setCommGrid(g)
+    } catch (err) { toast.error(err.message) }
+    setCommPopupLoading(false)
+  }
+
+  function commUpdateCell(idx, repId, val) { setCommGrid(prev => ({ ...prev, [idx]: { ...prev[idx], [repId]: { ...(prev[idx]?.[repId] || {}), commission: val } } })) }
+  function commUpdateBase(idx, repId, val) { setCommGrid(prev => ({ ...prev, [idx]: { ...prev[idx], [repId]: { ...(prev[idx]?.[repId] || {}), base: val } } })) }
+  function commGetRepTotal(repId) {
+    let total = 0
+    Object.keys(commGrid).forEach(idx => {
+      const cell = commGrid[idx]?.[repId]; if (!cell) return
+      if (commCalcMode === 'default') { total += (parseFloat(cell.commission) || 0) * (commItems[parseInt(idx)]?.qty || 0) }
+      else { total += parseFloat(cell.commission) || 0 }
+    })
+    return total
+  }
+
+  async function handleSaveCommission() {
+    let validReps
+    if (commItems.length > 0 && commRepRows.length > 0) {
+      validReps = commRepRows.map(r => ({ sales_rep_id: parseInt(r.sales_rep_id), total_price: Math.round(commGetRepTotal(r.sales_rep_id) * 100) / 100 })).filter(r => r.total_price > 0)
+    } else {
+      validReps = commRepRows.filter(r => r.sales_rep_id && parseFloat(r.total_price) > 0).map(r => ({ sales_rep_id: parseInt(r.sales_rep_id), total_price: parseFloat(r.total_price) || 0 }))
+    }
+    if (!validReps.length) { toast.error('Add at least one rep with commission'); return }
+    setCommSaving(true)
+    try {
+      if (showCommPopup.mode === 'edit' && showCommPopup.comm_id) {
+        await api.updateCommission(showCommPopup.comm_id, { reps: validReps, save_status: commCalcMode })
+        toast.success('Commission updated')
+      } else {
+        await api.createCommission({ po_id: showCommPopup.po_id, company_id: cust.legacy_id, reps: validReps })
+        toast.success('Commission created')
+      }
+      setShowCommPopup(null); setCommPopupData(null)
+      setHistoryData(null); setHistoryLoading(false)
+    } catch (err) { toast.error(err.message) }
+    setCommSaving(false)
+  }
+
+  // ── Payment popup functions ──
+  function openPayPopup() {
+    if (!commPopupData) return
+    const today = new Date().toISOString().slice(0, 10)
+    setPayForm({ commission_paid_date: today, received_amount: '', received_date: today, paid_mode: '', partial_comm_total: '', mark_paid: false })
+    const repAmts = {}
+    ;(commPopupData.details || []).forEach(d => {
+      const paidForRep = (commPopupData.payments || []).filter(p => String(p.rep_id) === String(d.sales_rep_id)).reduce((s, p) => s + (parseFloat(p.comm_paid_amount) || 0), 0)
+      const repTotal = parseFloat(d.total_price) || 0
+      repAmts[d.sales_rep_id] = { org_amount: repTotal, balance: Math.max(0, repTotal - paidForRep), paid_amount: '' }
+    })
+    setPayRepAmounts(repAmts)
+    setShowPayPopup(true)
+  }
+
+  async function handleSavePayment(e) {
+    e.preventDefault()
+    if (!payForm.received_amount) { toast.error('Enter received amount'); return }
+    if (!payForm.partial_comm_total) { toast.error('Enter partial commission total'); return }
+    setPaySaving(true)
+    try {
+      const repPayments = Object.entries(payRepAmounts).filter(([, d]) => parseFloat(d.paid_amount) > 0).map(([repId, d]) => ({ rep_id: parseInt(repId), paid_amount: parseFloat(d.paid_amount) || 0 }))
+      await api.addCommissionPayment(showCommPopup.comm_id, { ...payForm, rep_payments: repPayments })
+      toast.success('Payment saved')
+      setShowPayPopup(false)
+      // Refresh commission data
+      const fresh = await api.getCommission(showCommPopup.comm_id)
+      setCommPopupData(fresh)
+      setHistoryData(null); setHistoryLoading(false)
+    } catch (err) { toast.error(err.message) }
+    setPaySaving(false)
+  }
+
   function openEditInfo() {
     const code = cust.customer_code || ''
     const dashIdx = code.indexOf('-')
@@ -415,7 +564,7 @@ export default function ViewCustomer() {
   }
 
   return (
-    <div style={{ overflow: 'hidden' }}>
+    <div style={{ overflowX: 'hidden', maxWidth: 'calc(100vw - 260px)' }}>
       {/* Breadcrumb */}
       <div className="d-flex justify-content-between align-items-center mb-3">
         <nav aria-label="breadcrumb">
@@ -456,11 +605,21 @@ export default function ViewCustomer() {
           </div>
           <div className="d-flex align-items-center gap-2">
             {['pilot', 'active', 'inactive'].map(s => (
-              <label key={s} className="d-flex align-items-center gap-1 px-3 py-1 border rounded-pill" style={{ fontSize: '.8rem', fontWeight: 600, cursor: 'pointer', background: cust.status === s ? '#eff6ff' : '#fff', borderColor: cust.status === s ? '#2563eb' : '#e2e8f0' }}>
-                <input type="radio" name="custStatus" value={s} checked={cust.status === s} readOnly style={{ accentColor: '#2563eb', width: 14, height: 14 }} />
-                <span style={{ color: cust.status === s ? '#2563eb' : undefined }}>{s.charAt(0).toUpperCase() + s.slice(1)}</span>
+              <label key={s} className="d-flex align-items-center gap-1 px-3 py-1 border rounded-pill" style={{ fontSize: '.8rem', fontWeight: 600, cursor: 'pointer', background: (pendingStatus || cust.status) === s ? '#eff6ff' : '#fff', borderColor: (pendingStatus || cust.status) === s ? '#2563eb' : '#e2e8f0' }}>
+                <input type="radio" name="custStatus" value={s} checked={(pendingStatus || cust.status) === s} onChange={() => setPendingStatus(s)} style={{ accentColor: '#2563eb', width: 14, height: 14 }} />
+                <span style={{ color: (pendingStatus || cust.status) === s ? '#2563eb' : undefined }}>{s.charAt(0).toUpperCase() + s.slice(1)}</span>
               </label>
             ))}
+            <button className="btn btn-sm btn-primary px-3" style={{ borderRadius: 8, fontWeight: 600, fontSize: '.8rem' }} onClick={async () => {
+              const newStatus = pendingStatus || cust.status
+              try {
+                await api.updateCustomer(id, { status: newStatus })
+                const fresh = await api.getCustomer(id)
+                setCust(fresh)
+                setPendingStatus(null)
+                toast.success('Status updated')
+              } catch (err) { toast.error(err.message) }
+            }}>Save</button>
           </div>
         </div>
       </div>
@@ -517,7 +676,7 @@ export default function ViewCustomer() {
 
       {/* Tab Content */}
       <div className="card border-0 shadow-sm" style={{ borderRadius: 14, overflow: 'hidden' }}>
-        <div className="card-body p-4">
+        <div className="card-body p-4" style={{ overflowX: 'hidden' }}>
 
           {/* ===== DETAILS TAB ===== */}
           {activeTab === 'details' && (() => {
@@ -1382,31 +1541,44 @@ export default function ViewCustomer() {
               ) : allRows.length === 0 ? (
                 <div className="text-center text-muted py-5"><i className="bi bi-clock-history fs-1 d-block mb-2 opacity-25"></i>No history records found</div>
               ) : (<>
-                <div className="card border-0 shadow-sm" style={{ borderRadius: 12, overflow: 'hidden' }}>
-                  <div style={{ overflow: 'auto', maxHeight: '70vh' }}>
-                    <table className="table table-striped table-bordered table-hover table-sm align-middle mb-0" style={{ fontSize: 12, whiteSpace: 'nowrap', width: 'max-content', minWidth: '100%' }}>
+                <div className="card border-0 shadow-sm" style={{ borderRadius: 12 }}>
+                  <div style={{ overflowX: 'scroll', overflowY: 'auto', maxHeight: 'calc(100vh - 400px)' }}>
+                    <table className="table table-striped table-bordered table-hover table-sm align-middle mb-0" style={{ fontSize: 11, whiteSpace: 'nowrap', width: 'max-content' }}>
                       <thead style={{ backgroundColor: '#E0F1E2', position: 'sticky', top: 0, zIndex: 2 }}>
                         <tr>
-                          <th style={{ minWidth: 40, position: 'sticky', left: 0, backgroundColor: '#E0F1E2', zIndex: 3 }}>Line</th>
-                          <th style={{ minWidth: 70, position: 'sticky', left: 40, backgroundColor: '#E0F1E2', zIndex: 3 }}>Invoice&nbsp;#</th>
-                          <th style={{ minWidth: 90 }}>Invoice&nbsp;Date</th>
-                          <th style={{ minWidth: 50, textAlign: 'right' }}>Qty</th>
-                          <th style={{ minWidth: 80, textAlign: 'right' }}>PO&nbsp;Total</th>
+                          <th style={{ minWidth: 70, position: 'sticky', left: 0, backgroundColor: '#E0F1E2', zIndex: 3 }}>Action</th>
+                          <th style={{ minWidth: 30 }}>#</th>
+                          <th style={{ minWidth: 60 }}>Inv#</th>
+                          <th style={{ minWidth: 75 }}>Inv&nbsp;Date</th>
+                          <th style={{ minWidth: 35, textAlign: 'right' }}>Qty</th>
+                          <th style={{ minWidth: 65, textAlign: 'right' }}>PO&nbsp;Total</th>
                           {(historyData.itemTypeColumns || []).map(itc => (
-                            <th key={itc.id} style={{ minWidth: 90, textAlign: 'right' }}>{itc.name}<br/><small style={{ fontWeight: 'normal' }}>Total</small></th>
+                            <th key={itc.id} style={{ minWidth: 65, textAlign: 'right', fontSize: 10 }}>{itc.name}</th>
                           ))}
-                          <th style={{ minWidth: 85, textAlign: 'right' }}>CommTotal</th>
+                          <th style={{ minWidth: 70, textAlign: 'right' }}>CommTotal</th>
                           {(historyData.repColumns || []).map(rc => (
-                            <th key={rc.id} style={{ minWidth: 90, textAlign: 'right' }}>{rc.name}<br/><small className="text-muted">{rc.code}</small></th>
+                            <th key={rc.id} style={{ minWidth: 70, textAlign: 'right', fontSize: 10 }}>{rc.name}<br/><small className="text-muted">{rc.code}</small></th>
                           ))}
-                          <th style={{ minWidth: 90 }}>CommPaid</th>
+                          <th style={{ minWidth: 80 }}>CommPaid</th>
                         </tr>
                       </thead>
                       <tbody>
                         {paged.map((row, idx) => (
                           <tr key={row.po_id}>
-                            <td style={{ position: 'sticky', left: 0, backgroundColor: 'inherit', zIndex: 1 }}>{histPage * histPerPage + idx + 1}</td>
-                            <td style={{ position: 'sticky', left: 40, backgroundColor: 'inherit', zIndex: 1 }}>{row.invoice_number}</td>
+                            {/* Action buttons matching old PHP */}
+                            <td style={{ position: 'sticky', left: 0, backgroundColor: 'inherit', zIndex: 1 }}>
+                              {row.comm_id ? (<>
+                                <button className="btn btn-sm me-1" title="Edit Commission" style={{ padding: '1px 5px', fontSize: 11, background: '#e74c3c', color: '#fff', border: 'none', borderRadius: 3 }}
+                                  onClick={() => openEditCommission(row.comm_id)}><i className="bi bi-pencil"></i></button>
+                                <button className="btn btn-sm" title="View Commission" style={{ padding: '1px 5px', fontSize: 11, background: '#95a5a6', color: '#fff', border: 'none', borderRadius: 3 }}
+                                  onClick={() => openViewCommission(row.comm_id)}><i className="bi bi-eye"></i></button>
+                              </>) : (
+                                <button className="btn btn-sm" title="Add Commission" style={{ padding: '1px 5px', fontSize: 11, background: '#4CB755', color: '#fff', border: 'none', borderRadius: 3 }}
+                                  onClick={() => openAddCommission(row.po_id)}><i className="bi bi-plus"></i></button>
+                              )}
+                            </td>
+                            <td>{histPage * histPerPage + idx + 1}</td>
+                            <td>{row.invoice_number}</td>
                             <td>{row.invoice_date ? new Date(row.invoice_date).toLocaleDateString('en-US') : ''}</td>
                             <td style={{ textAlign: 'right' }}>{row.total_qty}</td>
                             <td style={{ textAlign: 'right' }}>${Number(row.po_total || 0).toFixed(2)}</td>
@@ -1417,7 +1589,18 @@ export default function ViewCustomer() {
                             {(historyData.repColumns || []).map(rc => (
                               <td key={rc.id} style={{ textAlign: 'right' }}>${Number(row.rep_amounts?.[rc.id] || 0).toFixed(2)}</td>
                             ))}
-                            <td>{(row.comm_paid_dates || []).length > 0 ? row.comm_paid_dates.map(d => new Date(d).toLocaleDateString('en-US')).join(', ') : ''}</td>
+                            {/* CommPaid with status styling matching old PHP */}
+                            <td>
+                              {row.balance_amt === 2 ? (
+                                <span className="badge" style={{ background: '#d4edda', color: '#155724', fontSize: 10 }}>Paid</span>
+                              ) : row.balance_amt === 1 ? (
+                                <span style={{ fontSize: 10, color: '#856404' }}>
+                                  Partial<br/>{(row.comm_paid_dates || []).map(d => new Date(d).toLocaleDateString('en-US')).join(', ')}
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: 10, color: '#999' }}></span>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1464,6 +1647,378 @@ export default function ViewCustomer() {
 
         </div>
       </div>
+
+      {/* ===== COMMISSION POPUP (Add / Edit / View) ===== */}
+      {showCommPopup && (<>
+        <div className="modal-backdrop fade show" style={{ zIndex: 1060 }}></div>
+        <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1065, overflowY: 'auto', height: '100vh' }}>
+          <div className="modal-dialog modal-xl" style={{ margin: '1rem auto' }}>
+            <div className="modal-content border-0 shadow">
+              <div className="modal-header text-white" style={{ background: showCommPopup.mode === 'view' ? '#95a5a6' : showCommPopup.mode === 'edit' ? 'linear-gradient(135deg, #e74c3c, #c0392b)' : 'linear-gradient(135deg, #4CB755, #3a9244)' }}>
+                <h5 className="modal-title fw-bold">
+                  <i className={`bi ${showCommPopup.mode === 'view' ? 'bi-eye' : showCommPopup.mode === 'edit' ? 'bi-pencil' : 'bi-plus-circle'} me-2`}></i>
+                  {showCommPopup.mode === 'view' ? 'View' : showCommPopup.mode === 'edit' ? 'Edit' : 'Add'} Commission
+                </h5>
+                <button type="button" className="btn-close btn-close-white" onClick={() => { setShowCommPopup(null); setCommPopupData(null); setShowPayPopup(false) }}></button>
+              </div>
+              <div className="modal-body">
+                {commPopupLoading ? (
+                  <div className="text-center py-5"><div className="spinner-border text-primary"></div></div>
+                ) : showCommPopup.mode === 'view' && commPopupData ? (() => {
+                  const inv = commPopupData.invoice || {}
+                  const details = commPopupData.details || []
+                  const items = commPopupData.items || []
+                  const commItemDets = commPopupData.commItemDets || []
+                  const commRepDets = commPopupData.commRepDets || []
+                  const saveStatus = commPopupData.save_status || 'default'
+                  const netAmt = parseFloat(inv.net_amount) || 0
+                  const commTotal = saveStatus === 'percent' ? (parseFloat(commPopupData.total_commission_percentage) || parseFloat(commPopupData.total_commission) || 0) : saveStatus === 'dollar' ? (parseFloat(commPopupData.total_commission_dollar) || parseFloat(commPopupData.total_commission) || 0) : (parseFloat(commPopupData.total_commission) || 0)
+                  const mainPayments = commPopupData.mainPayments || commPopupData.payments || []
+                  const totalPaid = mainPayments.reduce((s, p) => s + (parseFloat(p.received_amt) || 0), 0)
+                  const balanceDue = netAmt - totalPaid
+                  const fmtD = d => d ? new Date(d).toLocaleDateString('en-US') : '-'
+                  return (
+                    <div>
+                      {/* Commission Info header */}
+                      <table className="table table-bordered table-sm mb-4" style={{ fontSize: 13 }}>
+                        <thead><tr style={{ background: '#006BF9', color: '#fff' }}>
+                          <th>Commission Invoice #</th><th>Invoice $</th><th>Invoice Date</th><th>Customer Name</th>
+                        </tr></thead>
+                        <tbody><tr>
+                          <td>{inv.invoice_number || '-'}</td>
+                          <td>${netAmt.toFixed(2)}</td>
+                          <td>{fmtD(inv.invoice_date)}</td>
+                          <td>{commPopupData.company_name || cust?.company_name || '-'}</td>
+                        </tr></tbody>
+                      </table>
+
+                      {/* Invoice Payment Details */}
+                      <h6 className="fw-semibold mb-2">Invoice Payment Details</h6>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table className="table table-bordered table-sm mb-4" style={{ fontSize: 12 }}>
+                          <thead><tr style={{ background: '#006BF9', color: '#fff' }}>
+                            <th>Comm Invoice #</th><th className="text-end">Balance Due $</th><th className="text-end">Received $</th><th>Date Rcvd</th><th>Check# CC#</th><th className="text-end">Partial ComTotal</th><th>Compaid</th>
+                            {details.map(d => <th key={d.sales_rep_id} className="text-center">{d.rep_code || '-'}</th>)}
+                          </tr></thead>
+                          <tbody>
+                            {mainPayments.length > 0 ? mainPayments.map((p, i) => {
+                              const rcvd = parseFloat(p.received_amt) || 0
+                              const paidBefore = mainPayments.slice(0, i).reduce((s, pp) => s + (parseFloat(pp.received_amt) || 0), 0)
+                              return (
+                                <tr key={i}>
+                                  <td>{inv.invoice_number || '-'}</td>
+                                  <td className="text-end">${Math.max(0, netAmt - paidBefore - rcvd).toFixed(2)}</td>
+                                  <td className="text-end">${rcvd.toFixed(2)}</td>
+                                  <td>{fmtD(p.received_date)}</td>
+                                  <td>{p.compaid_mode || p.paid_mode || '-'}</td>
+                                  <td className="text-end">${(parseFloat(p.partial_com_total) || 0).toFixed(2)}</td>
+                                  <td>{p.commission_paid_date ? fmtD(p.commission_paid_date) : '-'}</td>
+                                  {details.map(d => {
+                                    const rp = (p.rep_payments || []).find(r => String(r.rep_id) === String(d.sales_rep_id))
+                                    return <td key={d.sales_rep_id} className="text-end">{rp ? '$' + (parseFloat(rp.comm_paid_amount) || 0).toFixed(2) : '-'}</td>
+                                  })}
+                                </tr>
+                              )
+                            }) : (
+                              <tr><td>{inv.invoice_number || '-'}</td><td className="text-end">${netAmt.toFixed(2)}</td><td className="text-end">$0.00</td><td>-</td><td>-</td><td className="text-end">$0.00</td><td>-</td>
+                                {details.map(d => <td key={d.sales_rep_id} className="text-end">$0.00</td>)}
+                              </tr>
+                            )}
+                          </tbody>
+                          {mainPayments.length > 0 && (
+                            <tfoot><tr className="fw-bold" style={{ background: '#f0f0f0' }}>
+                              <td>Total</td><td className="text-end">${Math.max(0, balanceDue).toFixed(2)}</td><td className="text-end">${totalPaid.toFixed(2)}</td>
+                              <td></td><td></td><td className="text-end">${mainPayments.reduce((s, p) => s + (parseFloat(p.partial_com_total) || 0), 0).toFixed(2)}</td><td></td>
+                              {details.map(d => <td key={d.sales_rep_id} className="text-end">$0.00</td>)}
+                            </tr></tfoot>
+                          )}
+                        </table>
+                      </div>
+
+                      {/* Add Payment button */}
+                      <div className="mb-3">
+                        <button className="btn btn-primary btn-lg" onClick={openPayPopup}><i className="bi bi-plus-circle me-2"></i>Add Payment Details</button>
+                      </div>
+
+                      {/* Commission Items Grid (save_status aware) */}
+                      {items.length > 0 && (
+                        <div style={{ background: '#d4edda', borderRadius: 8, padding: 16 }}>
+                          <div style={{ overflowX: 'auto' }}>
+                            <table className="table table-bordered table-sm mb-0" style={{ fontSize: 12 }}>
+                              <thead>
+                                <tr>
+                                  <th style={{ background: '#4CB755', color: '#fff' }} colSpan="5"></th>
+                                  {details.map(d => <th key={d.sales_rep_id} colSpan={saveStatus === 'dollar' ? 1 : 2} className="text-center" style={{ background: '#FFFFD4' }}>{d.rep_name}<br/><small>{d.rep_code}</small></th>)}
+                                </tr>
+                                <tr>
+                                  <th style={{ background: '#4CB755', color: '#fff' }}>Style</th>
+                                  <th style={{ background: '#4CB755', color: '#fff' }}>QTY</th>
+                                  <th style={{ background: '#4CB755', color: '#fff' }}>UNIT COST</th>
+                                  <th style={{ background: '#4CB755', color: '#fff' }}>BASE $</th>
+                                  <th style={{ background: '#4CB755', color: '#fff' }}>TOTAL</th>
+                                  {details.map(d => saveStatus === 'dollar' ? (
+                                    <th key={d.sales_rep_id} className="text-center" style={{ background: '#FFFFD4', fontSize: 11 }}>{d.rep_code}</th>
+                                  ) : (<React.Fragment key={d.sales_rep_id}>
+                                    <th className="text-center" style={{ background: '#FFFFD4', fontSize: 11 }}>{d.rep_code}</th>
+                                    <th className="text-center" style={{ background: '#FFFFD4', fontSize: 11 }}></th>
+                                  </React.Fragment>))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr className="fw-bold" style={{ background: '#DFF0D8' }}>
+                                  <td colSpan="4"></td>
+                                  <td className="text-center">${commTotal.toFixed(2)}</td>
+                                  {details.map(d => {
+                                    const rv = saveStatus === 'percent' ? (parseFloat(d.total_price_percentage) || parseFloat(d.total_price) || 0) : saveStatus === 'dollar' ? (parseFloat(d.total_price_dollar) || parseFloat(d.total_price) || 0) : (parseFloat(d.total_price) || 0)
+                                    return <td key={d.sales_rep_id} colSpan={saveStatus === 'dollar' ? 1 : 2} className="text-center" style={{ background: '#FFFFD4' }}>${rv.toFixed(2)}</td>
+                                  })}
+                                </tr>
+                                {items.map((item, idx) => {
+                                  const itemId = item.item_id || item.legacy_id
+                                  const itemDet = commItemDets.find(d => d.item_id === itemId)
+                                  return (
+                                    <tr key={idx} style={{ background: '#e8f5e9' }}>
+                                      <td style={{ textAlign: 'left' }}>{item.item_name || '-'}</td>
+                                      <td className="text-center">{item.qty || 0}</td>
+                                      <td className="text-center">{saveStatus === 'default' ? '$' + (parseFloat(item.unit_cost) || 0).toFixed(2) : ''}</td>
+                                      <td className="text-center">{saveStatus === 'default' ? '$' + (parseFloat(itemDet?.base_price || item.unit_cost) || 0).toFixed(2) : ''}</td>
+                                      <td className="text-center">{saveStatus === 'default' ? '$' + (parseFloat(itemDet?.total_price) || 0).toFixed(2) : ''}</td>
+                                      {details.map(d => {
+                                        const rd = commRepDets.find(r => r.item_id === itemId && r.sales_rep_id === d.sales_rep_id)
+                                        if (saveStatus === 'percent') {
+                                          return (<React.Fragment key={d.sales_rep_id}>
+                                            <td className="text-center" style={{ background: '#FFFFD4' }}>{rd?.commission_price_percentage || '0'}%</td>
+                                            <td className="text-center" style={{ background: '#FFFFD4' }}>${(parseFloat(rd?.total_commission_price_percentage) || 0).toFixed(2)}</td>
+                                          </React.Fragment>)
+                                        } else if (saveStatus === 'dollar') {
+                                          return <td key={d.sales_rep_id} className="text-center" style={{ background: '#FFFFD4' }}>${(parseFloat(rd?.total_commission_dollar || rd?.commission_price_dollar) || 0).toFixed(2)}</td>
+                                        } else {
+                                          return (<React.Fragment key={d.sales_rep_id}>
+                                            <td className="text-center" style={{ background: '#FFFFD4' }}>${(parseFloat(rd?.commission_price) || 0).toFixed(2)}</td>
+                                            <td className="text-center" style={{ background: '#FFFFD4' }}>${(parseFloat(rd?.total_commission_price) || 0).toFixed(2)}</td>
+                                          </React.Fragment>)
+                                        }
+                                      })}
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })() : (showCommPopup.mode === 'add' || showCommPopup.mode === 'edit') ? (
+                  <div>
+                    {/* Invoice summary */}
+                    {commPopupData?.invoice && (
+                      <table className="table table-bordered mb-4" style={{ fontSize: 13 }}>
+                        <thead><tr style={{ background: '#3b82f6', color: '#fff' }}>
+                          <th className="text-center">Invoice #</th><th className="text-center">PO #</th><th className="text-center">PO $</th><th className="text-center">PO Date</th><th className="text-center">Customer</th>
+                        </tr></thead>
+                        <tbody><tr>
+                          <td className="text-center">{commPopupData.invoice.invoice_number || '-'}</td>
+                          <td className="text-center">{commPopupData.invoice.po_number || '-'}</td>
+                          <td className="text-center">${(parseFloat(commPopupData.invoice.net_amount) || 0).toFixed(2)}</td>
+                          <td className="text-center">{commPopupData.invoice.po_date ? new Date(commPopupData.invoice.po_date).toLocaleDateString('en-US') : '-'}</td>
+                          <td className="text-center">{commPopupData.company_name || cust?.company_name || '-'}</td>
+                        </tr></tbody>
+                      </table>
+                    )}
+                    {/* 3 Mode Buttons */}
+                    <div className="d-flex justify-content-end gap-2 mb-3">
+                      <button type="button" className="btn px-4" style={{ background: '#1abc9c', color: '#fff', opacity: commCalcMode === 'percent' ? 1 : 0.65 }} onClick={() => setCommCalcMode('percent')}>Pay by % of Total</button>
+                      <button type="button" className="btn px-4" style={{ background: '#1abc9c', color: '#fff', opacity: commCalcMode === 'dollar' ? 1 : 0.65 }} onClick={() => setCommCalcMode('dollar')}>Pay by $</button>
+                      <button type="button" className="btn px-4" style={{ background: '#333', color: '#fff', opacity: commCalcMode === 'default' ? 1 : 0.65 }} onClick={() => setCommCalcMode('default')}>Default View</button>
+                    </div>
+                    {/* Items Grid */}
+                    {commItems.length > 0 && commRepRows.length > 0 ? (
+                      <div className="table-responsive">
+                        <table className="table table-bordered table-sm mb-0" style={{ fontSize: 12, textAlign: 'center' }}>
+                          <thead>
+                            <tr>
+                              <th style={{ minWidth: 150, background: '#EDF6ED' }}>Style</th>
+                              <th style={{ width: 60, background: '#EDF6ED' }}>QTY</th>
+                              <th style={{ width: 80, background: '#EDF6ED' }}>UNIT COST</th>
+                              <th style={{ width: 90, background: '#EDF6ED' }}>BASE $</th>
+                              <th style={{ width: 90, background: '#EDF6ED' }}>TOTAL</th>
+                              {commRepRows.map(r => <th key={r.sales_rep_id} colSpan={commCalcMode === 'percent' ? 2 : 1} style={{ minWidth: commCalcMode === 'percent' ? 160 : 130, background: '#FFFFD4', fontSize: 11 }}>{r.rep_name}<br/><span style={{ color: '#666' }}>{r.rep_code}</span></th>)}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr className="fw-bold">
+                              <td colSpan="4" style={{ background: '#EDF6ED' }}></td>
+                              <td style={{ background: '#EDF6ED' }}>${commRepRows.reduce((s, r) => s + commGetRepTotal(r.sales_rep_id), 0).toFixed(2)}</td>
+                              {commRepRows.map(r => <td key={r.sales_rep_id} colSpan={commCalcMode === 'percent' ? 2 : 1} style={{ background: '#FFFFD4' }}>${commGetRepTotal(r.sales_rep_id).toFixed(2)}</td>)}
+                            </tr>
+                            {commItems.map((item, idx) => {
+                              const baseVal = parseFloat(commGrid[idx]?.[commRepRows[0]?.sales_rep_id]?.base || item.unit_cost || 0)
+                              const qty = item.qty || 0
+                              const itemNetValue = qty * baseVal
+                              const itemCommTotal = commRepRows.reduce((s, r) => s + (parseFloat(commGrid[idx]?.[r.sales_rep_id]?.commission) || 0), 0)
+                              return (
+                                <tr key={idx}>
+                                  <td style={{ textAlign: 'left' }}>{item.item_name || '-'}</td>
+                                  <td>{qty}</td>
+                                  <td>{commCalcMode === 'default' ? (parseFloat(item.unit_cost) || 0).toFixed(2) : ''}</td>
+                                  <td>{commCalcMode === 'default' ? <input type="number" step="0.01" className="form-control form-control-sm text-center" style={{ width: 75, margin: '0 auto' }} value={commGrid[idx]?.[commRepRows[0]?.sales_rep_id]?.base ?? item.unit_cost ?? ''} onChange={e => commRepRows.forEach(r => commUpdateBase(idx, r.sales_rep_id, e.target.value))} /> : ''}</td>
+                                  <td>{commCalcMode === 'default' ? itemCommTotal.toFixed(2) : ''}</td>
+                                  {commRepRows.map(r => {
+                                    const cell = commGrid[idx]?.[r.sales_rep_id] || {}
+                                    const commVal = parseFloat(cell.commission) || 0
+                                    if (commCalcMode === 'percent') {
+                                      const pctVal = cell.percent || ''
+                                      const calcComm = itemNetValue * (parseFloat(pctVal) || 0) / 100
+                                      return (<React.Fragment key={r.sales_rep_id}>
+                                        <td style={{ background: '#FFFFD4' }}><input type="number" step="0.01" className="form-control form-control-sm text-center" style={{ width: 60, margin: '0 auto' }} value={pctVal} onChange={e => { const p = e.target.value; const c = (itemNetValue * (parseFloat(p) || 0) / 100).toFixed(2); setCommGrid(prev => ({ ...prev, [idx]: { ...prev[idx], [r.sales_rep_id]: { ...prev[idx]?.[r.sales_rep_id], percent: p, commission: c } } })) }} placeholder="%" /></td>
+                                        <td style={{ background: '#FFFFD4' }}><input type="text" className="form-control form-control-sm text-center" style={{ width: 65, margin: '0 auto', background: '#f8f9fa' }} readOnly value={calcComm ? calcComm.toFixed(2) : '0'} /></td>
+                                      </React.Fragment>)
+                                    } else if (commCalcMode === 'dollar') {
+                                      return <td key={r.sales_rep_id} style={{ background: '#FFFFD4' }}><input type="number" step="0.01" className="form-control form-control-sm text-center" style={{ width: 70, margin: '0 auto' }} value={cell.commission || ''} onChange={e => commUpdateCell(idx, r.sales_rep_id, e.target.value)} placeholder="$" /></td>
+                                    } else {
+                                      return <td key={r.sales_rep_id} style={{ background: '#FFFFD4' }}><div className="d-flex align-items-center gap-1 justify-content-center"><input type="number" step="0.01" className="form-control form-control-sm text-center" style={{ width: 50 }} value={cell.commission || ''} onChange={e => commUpdateCell(idx, r.sales_rep_id, e.target.value)} placeholder="0" /><span style={{ fontSize: 10, color: '#666' }}>{(commVal * qty).toFixed(2)}</span></div></td>
+                                    }
+                                  })}
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div>
+                        <h6 className="fw-semibold mb-2"><i className="bi bi-people me-2"></i>Sales Rep Commission</h6>
+                        <table className="table table-sm table-bordered" style={{ fontSize: 13 }}>
+                          <thead className="bg-light"><tr><th>Sales Rep</th><th>Code</th><th style={{ width: 200 }}>Commission ($)</th></tr></thead>
+                          <tbody>{commRepRows.map((r, i) => <tr key={i}><td className="fw-semibold">{r.rep_name}</td><td><span className="badge bg-primary-subtle text-primary">{r.rep_code || '-'}</span></td><td><input type="number" step="0.01" className="form-control form-control-sm" value={r.total_price || ''} onChange={e => setCommRepRows(prev => prev.map((rr, j) => j === i ? { ...rr, total_price: e.target.value } : rr))} placeholder="0.00" /></td></tr>)}</tbody>
+                          <tfoot><tr className="fw-bold"><td colSpan="2" className="text-end">Total:</td><td>${commRepRows.reduce((s, r) => s + (parseFloat(r.total_price) || 0), 0).toFixed(2)}</td></tr></tfoot>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                ) : <p className="text-muted">No data</p>}
+              </div>
+              <div className="modal-footer">
+                {showCommPopup.mode !== 'view' && (
+                  <button className="btn btn-success px-4" onClick={handleSaveCommission} disabled={commSaving}>
+                    {commSaving ? <span className="spinner-border spinner-border-sm"></span> : <><i className="bi bi-check-lg me-1"></i>Save</>}
+                  </button>
+                )}
+                <button className="btn btn-outline-secondary" onClick={() => { setShowCommPopup(null); setCommPopupData(null); setShowPayPopup(false) }}>
+                  {showCommPopup.mode === 'view' ? 'Close' : 'Cancel'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </>)}
+
+      {/* ===== PARTIAL COMM. PAYMENT POPUP (on top of View Commission) ===== */}
+      {showPayPopup && commPopupData && (() => {
+        const pInv = commPopupData.invoice || {}
+        const pDetails = commPopupData.details || []
+        const pSS = commPopupData.save_status || 'default'
+        const pNetAmt = parseFloat(pInv.net_amount) || 0
+        const pCommTotal = pSS === 'percent' ? (parseFloat(commPopupData.total_commission_percentage) || parseFloat(commPopupData.total_commission) || 0) : pSS === 'dollar' ? (parseFloat(commPopupData.total_commission_dollar) || parseFloat(commPopupData.total_commission) || 0) : (parseFloat(commPopupData.total_commission) || 0)
+        const pMainPay = commPopupData.mainPayments || commPopupData.payments || []
+        const pTotalPaid = pMainPay.reduce((s, p) => s + (parseFloat(p.received_amt) || 0), 0)
+        const pBalanceDue = pNetAmt - pTotalPaid
+        const pRecAmt = parseFloat(payForm.received_amount) || 0
+        const pPct = pNetAmt > 0 ? ((pRecAmt / pNetAmt) * 100).toFixed(2) : '0.00'
+        return (<>
+          <div className="modal-backdrop fade show" style={{ zIndex: 1070 }}></div>
+          <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1075, overflowY: 'auto', height: '100vh' }}>
+            <div className="modal-dialog modal-lg" style={{ margin: '1rem auto' }}>
+              <div className="modal-content border-0 shadow">
+                <div className="modal-header" style={{ background: '#006BF9', color: '#fff' }}>
+                  <div>
+                    <h5 className="modal-title mb-1">Partial Comm. Payment: <strong>Invoice #{pInv.invoice_number || ''}</strong></h5>
+                    <div style={{ fontSize: 13 }}>
+                      <span><strong>Invoice Amt: ${pNetAmt.toFixed(2)}</strong></span>
+                      <span className="ms-4"><strong>CommTotal: ${pCommTotal.toFixed(2)}</strong></span>
+                      <span className="ms-4"><strong>Balance Due: ${Math.max(0, pBalanceDue).toFixed(2)}</strong></span>
+                    </div>
+                  </div>
+                  <button type="button" className="btn-close btn-close-white" onClick={() => setShowPayPopup(false)}></button>
+                </div>
+                <div className="modal-body">
+                  <form onSubmit={handleSavePayment}>
+                    <div className="row g-3 mb-3">
+                      <div className="col-md-4"><label className="form-label fw-semibold">Comm Paid Date</label><input type="date" className="form-control" value={payForm.commission_paid_date} onChange={e => setPayForm({ ...payForm, commission_paid_date: e.target.value })} /></div>
+                      <div className="col-md-4">
+                        <label className="form-label fw-semibold">Received Amount <span className="text-danger">*</span></label>
+                        <input type="number" step="0.01" className="form-control" value={payForm.received_amount} onChange={e => {
+                          const val = e.target.value; const recAmt = parseFloat(val) || 0
+                          const partial = Math.round((pNetAmt > 0 ? (recAmt / pNetAmt) * pCommTotal : 0) * 100) / 100
+                          const totalRepComm = pDetails.reduce((s, d) => s + (parseFloat(d.total_price) || 0), 0)
+                          const newAmts = { ...payRepAmounts }
+                          Object.entries(newAmts).forEach(([repId, data]) => {
+                            const repShare = totalRepComm > 0 ? (parseFloat(data.org_amount) || 0) / totalRepComm : 0
+                            newAmts[repId] = { ...data, paid_amount: String(Math.round(partial * repShare * 100) / 100) }
+                          })
+                          setPayForm({ ...payForm, received_amount: val, partial_comm_total: String(partial) }); setPayRepAmounts(newAmts)
+                        }} placeholder="0.00" required />
+                      </div>
+                      <div className="col-md-4"><label className="form-label fw-semibold">SalesTax</label><input type="text" className="form-control bg-light" readOnly value={pInv.sales_tax_amount || 0} /></div>
+                    </div>
+                    <div className="row g-3 mb-3">
+                      <div className="col-md-4"><label className="form-label fw-semibold">Commi Amount</label><input type="text" className="form-control bg-light" readOnly value={'$' + pNetAmt.toFixed(2)} /></div>
+                      <div className="col-md-4"><label className="form-label fw-semibold">Shipping</label><input type="text" className="form-control bg-light" readOnly value={pInv.shipping_costs || '0.00'} /></div>
+                      <div className="col-md-4 d-flex align-items-end">{pRecAmt > 0 && <div style={{ fontSize: 12, fontWeight: 600 }}>Amount Received: {pPct}% of ${pNetAmt.toFixed(2)}</div>}</div>
+                    </div>
+                    <div className="row g-3 mb-3">
+                      <div className="col-md-4"><label className="form-label fw-semibold">Date Received</label><input type="date" className="form-control" value={payForm.received_date} onChange={e => setPayForm({ ...payForm, received_date: e.target.value })} /></div>
+                      <div className="col-md-4 d-flex align-items-end">
+                        <div className="d-flex align-items-center gap-2 pb-2">
+                          <input type="checkbox" className="form-check-input" style={{ width: 30, height: 30 }} checked={payForm.mark_paid} onChange={async e => {
+                            const checked = e.target.checked; setPayForm({ ...payForm, mark_paid: checked })
+                            try { if (checked) { await api.markCommissionPaid(showCommPopup.comm_id); toast.success('Payment Updated to PAID') } else { await api.markCommissionUnpaid(showCommPopup.comm_id); toast.success('Payment Unpaid updated') } } catch {}
+                          }} id="custPayPaidChk" />
+                          <label className="form-check-label fw-bold" htmlFor="custPayPaidChk" style={{ fontSize: 20 }}>PAID</label>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="row g-3 mb-3">
+                      <div className="col-md-4"><label className="form-label fw-semibold">Received Check or CC</label><input type="text" className="form-control" value={payForm.paid_mode} onChange={e => setPayForm({ ...payForm, paid_mode: e.target.value })} placeholder="Enter Check or CC last 4 digit" /></div>
+                    </div>
+                    <div className="row g-3 mb-3">
+                      <div className="col-md-4">
+                        <label className="form-label fw-semibold">Partial CommTotal <span className="text-danger">*</span></label>
+                        <input type="number" step="0.01" className="form-control" value={payForm.partial_comm_total} onChange={e => setPayForm({ ...payForm, partial_comm_total: e.target.value })} required />
+                      </div>
+                      <div className="col-md-4 d-flex align-items-end">
+                        <button type="button" className="btn btn-success mb-0" onClick={() => setPayForm({ ...payForm, partial_comm_total: String(Math.round(parseFloat(payForm.partial_comm_total) || 0)) })}>Round off</button>
+                      </div>
+                    </div>
+                    {/* Per-Rep */}
+                    {Object.entries(payRepAmounts).map(([repId, data]) => {
+                      const det = pDetails.find(d => String(d.sales_rep_id) === repId)
+                      return (
+                        <div className="row g-3 mb-3 align-items-center" key={repId}>
+                          <div className="col-md-4 text-end">
+                            <div className="fw-semibold">{det?.rep_name || `Rep #${repId}`} ({det?.rep_code || ''})</div>
+                            <div style={{ fontSize: 12 }}><strong>(${data.org_amount.toFixed(2)})</strong></div>
+                            <div style={{ fontSize: 11, fontStyle: 'italic', color: '#666' }}>Outstanding: <span style={{ color: data.balance > 0 ? '#dc2626' : '#198754' }}>${data.balance.toFixed(2)}</span></div>
+                          </div>
+                          <div className="col-md-4">
+                            <input type="number" step="0.01" className="form-control" placeholder="Commission Amount" value={data.paid_amount}
+                              onChange={e => setPayRepAmounts(prev => ({ ...prev, [repId]: { ...prev[repId], paid_amount: e.target.value } }))} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                    <div className="d-flex gap-2 mt-3">
+                      <button type="submit" className="btn btn-primary px-4" disabled={paySaving}>{paySaving ? <span className="spinner-border spinner-border-sm"></span> : 'Save/Send'}</button>
+                      <button type="button" className="btn btn-outline-secondary px-4" onClick={() => setShowPayPopup(false)}>Cancel</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>)
+      })()}
 
       {/* ===== EDIT CUSTOMER INFO MODAL ===== */}
       {showEditInfo && (<>
