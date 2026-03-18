@@ -21,7 +21,13 @@ import taxRatesRouter from './routes/taxRates.js'
 import costInfoRouter from './routes/costInfo.js'
 import productStylesRouter from './routes/productStyles.js'
 import customersRouter from './routes/customers.js'
+import customerTypesRouter from './routes/customerTypes.js'
 import suppliersRouter from './routes/suppliers.js'
+import customerImportExportRouter from './routes/customerImportExport.js'
+import airfeetPoRouter from './routes/airfeetPo.js'
+import invoicesRouter from './routes/invoices.js'
+import commissionsRouter from './routes/commissions.js'
+import reportsRouter from './routes/reports.js'
 import User from './models/User.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -34,8 +40,13 @@ app.use(express.json({ limit: '50mb' }))
 // MongoDB Connection
 const MONGO_URI = process.env.MONGO_URI
 
+import { startBackupScheduler } from './lib/backupScheduler.js'
+
 mongoose.connect(MONGO_URI, { dbName: '523' })
-  .then(() => console.log('MongoDB connected to database: 523'))
+  .then(() => {
+    console.log('MongoDB connected to database: 523')
+    startBackupScheduler()
+  })
   .catch(err => console.error('MongoDB connection error:', err))
 
 // Seed route - before user routes
@@ -80,7 +91,13 @@ app.use('/api/tax-rates', taxRatesRouter)
 app.use('/api/cost-info', costInfoRouter)
 app.use('/api/product-styles', productStylesRouter)
 app.use('/api/customers', customersRouter)
+app.use('/api/customer-types', customerTypesRouter)
 app.use('/api/suppliers', suppliersRouter)
+app.use('/api/customer-io', customerImportExportRouter)
+app.use('/api/airfeet-po', airfeetPoRouter)
+app.use('/api/invoices', invoicesRouter)
+app.use('/api/commissions', commissionsRouter)
+app.use('/api/reports', reportsRouter)
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -98,6 +98,11 @@ export default function ItemTypeList() {
       toast.error('Item type name is required')
       return
     }
+    // Uniqueness check
+    try {
+      const check = await api.checkUniqueItemType(form.name.trim(), editingId)
+      if (!check.unique) { toast.error(`Item type "${form.name}" already exists`); return }
+    } catch {}
     setSaving(true)
     try {
       if (editingId) {

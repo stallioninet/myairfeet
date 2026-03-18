@@ -23,7 +23,18 @@ import ViewCustomer from './pages/customers/ViewCustomer'
 import ActiveCustomers from './pages/customers/ActiveCustomers'
 import InactiveCustomers from './pages/customers/InactiveCustomers'
 import SupplierList from './pages/customers/SupplierList'
+import ViewSupplier from './pages/customers/ViewSupplier'
+import PilotCustomers from './pages/customers/PilotCustomers'
+import CustomerTypes from './pages/customers/CustomerTypes'
+import CustomerImportExport from './pages/customers/CustomerImportExport'
 import ItemSizesView from './pages/items/ItemSizesView'
+import AirfeetPoList from './pages/airfeetpo/AirfeetPoList'
+import InvoiceList from './pages/invoices/InvoiceList'
+import OutstandingInvoices from './pages/invoices/OutstandingInvoices'
+import OutstandEmails from './pages/invoices/OutstandEmails'
+import CommissionList from './pages/commissions/CommissionList'
+import Reports from './pages/reports/Reports'
+import DefaultAccess from './pages/admin/users/DefaultAccess'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -68,6 +79,7 @@ function App() {
           <Route path="/admin/activity" element={<UserActivity />} />
           <Route path="/admin/activity/:id" element={<UserActivityView />} />
           <Route path="/admin/backup" element={<BackupManagement />} />
+          <Route path="/admin/default-access" element={<DefaultAccess />} />
           <Route path="/events" element={<EventList />} />
           <Route path="/items" element={<ItemsHub />} />
           <Route path="/items/sizes/:id" element={<ItemSizesView />} />
@@ -76,9 +88,19 @@ function App() {
           <Route path="/sales-reps/create" element={<CreateSalesRep />} />
           <Route path="/sales-reps/:id/edit" element={<CreateSalesRep />} />
           <Route path="/sales-reps/:id" element={<ViewSalesRep />} />
+          <Route path="/airfeet-po" element={<AirfeetPoList />} />
+          <Route path="/invoices" element={<InvoiceList />} />
+          <Route path="/invoices/outstanding" element={<OutstandingInvoices />} />
+          <Route path="/invoices/outstand-emails" element={<OutstandEmails />} />
+          <Route path="/commissions" element={<CommissionList />} />
+          <Route path="/reports" element={<Reports />} />
           <Route path="/customers/active" element={<ActiveCustomers />} />
           <Route path="/customers/inactive" element={<InactiveCustomers />} />
           <Route path="/customers/suppliers" element={<SupplierList />} />
+          <Route path="/customers/suppliers/:id" element={<ViewSupplier />} />
+          <Route path="/customers/pilot" element={<PilotCustomers />} />
+          <Route path="/customers/types" element={<CustomerTypes />} />
+          <Route path="/customers/import-export" element={<CustomerImportExport />} />
           <Route path="/customers/:id" element={<ViewCustomer />} />
         </Route>
         <Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />

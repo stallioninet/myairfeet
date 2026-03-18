@@ -13,6 +13,19 @@ router.get('/', async (req, res) => {
   }
 })
 
+// GET check unique name/sku
+router.get('/check-unique', async (req, res) => {
+  try {
+    const { field, value, exclude_id } = req.query
+    if (!field || !value) return res.json({ unique: true })
+    if (!['name', 'sku'].includes(field)) return res.status(400).json({ error: 'Invalid field' })
+    const filter = { [field]: { $regex: new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }
+    if (exclude_id) filter._id = { $ne: exclude_id }
+    const existing = await ProductItem.findOne(filter)
+    res.json({ unique: !existing })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
 // GET single product item
 router.get('/:id', async (req, res) => {
   try {
@@ -111,8 +124,16 @@ router.put('/reorder/bulk', async (req, res) => {
 // DELETE product item
 router.delete('/:id', async (req, res) => {
   try {
-    const product = await ProductItem.findByIdAndDelete(req.params.id)
+    const product = await ProductItem.findById(req.params.id)
     if (!product) return res.status(404).json({ error: 'Product not found' })
+    // Check if used in PO items or item size maps
+    const mongoose = (await import('mongoose')).default
+    const db = mongoose.connection.db
+    const poItemCount = await db.collection('po_items').countDocuments({ item_id: product.legacy_id || 0 })
+    if (poItemCount > 0) return res.status(400).json({ error: `Cannot delete: used in ${poItemCount} PO item(s)` })
+    const mapCount = await db.collection('item_size_maps').countDocuments({ item: req.params.id })
+    if (mapCount > 0) return res.status(400).json({ error: `Cannot delete: ${mapCount} size mapping(s) reference this product` })
+    await ProductItem.findByIdAndDelete(req.params.id)
     res.json({ message: 'Product deleted' })
   } catch (err) {
     res.status(500).json({ error: err.message })

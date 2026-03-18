@@ -91,11 +91,19 @@ router.put('/:id/deactivate', async (req, res) => {
 })
 
 // Delete level
+// DELETE level (soft or permanent)
 router.delete('/:id', async (req, res) => {
   try {
-    const level = await UserLevel.findByIdAndDelete(req.params.id)
-    if (!level) return res.status(404).json({ error: 'Level not found' })
-    res.json({ message: 'Level deleted' })
+    const permanent = req.query.permanent === 'true'
+    if (permanent) {
+      const level = await UserLevel.findByIdAndDelete(req.params.id)
+      if (!level) return res.status(404).json({ error: 'Level not found' })
+      res.json({ message: 'Level permanently deleted' })
+    } else {
+      const level = await UserLevel.findByIdAndUpdate(req.params.id, { status: 'inactive' }, { new: true })
+      if (!level) return res.status(404).json({ error: 'Level not found' })
+      res.json({ message: 'Level deactivated' })
+    }
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

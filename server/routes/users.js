@@ -26,6 +26,21 @@ router.get('/', async (req, res) => {
   }
 })
 
+// GET check unique email/username
+router.get('/check-unique', async (req, res) => {
+  try {
+    const { field, value, exclude_id } = req.query
+    if (!field || !value) return res.json({ unique: true })
+    if (!['email', 'username'].includes(field)) return res.status(400).json({ error: 'Invalid field' })
+    const filter = { [field]: { $regex: new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }
+    if (exclude_id) filter._id = { $ne: exclude_id }
+    const existing = await User.findOne(filter)
+    res.json({ unique: !existing })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // GET single user
 router.get('/:id', async (req, res) => {
   try {
@@ -65,12 +80,19 @@ router.put('/:id', async (req, res) => {
   }
 })
 
-// DELETE user
+// DELETE user (soft or permanent)
 router.delete('/:id', async (req, res) => {
   try {
-    const user = await User.findByIdAndDelete(req.params.id)
-    if (!user) return res.status(404).json({ error: 'User not found' })
-    res.json({ message: 'User deleted' })
+    const permanent = req.query.permanent === 'true'
+    if (permanent) {
+      const user = await User.findByIdAndDelete(req.params.id)
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      res.json({ message: 'User permanently deleted' })
+    } else {
+      const user = await User.findByIdAndUpdate(req.params.id, { status: 'inactive' }, { new: true })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      res.json({ message: 'User deactivated' })
+    }
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

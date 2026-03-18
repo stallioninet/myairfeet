@@ -18,7 +18,10 @@ export default function UserCreate() {
     first_name: '',
     last_name: '',
     email: '',
+    username: '',
     phone: '',
+    extension: '',
+    country_code: '',
     password: '',
     confirmPassword: '',
     level: '',
@@ -59,6 +62,10 @@ export default function UserCreate() {
       toast.error('Please fill in all required fields')
       return
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      toast.error('Invalid email format')
+      return
+    }
     if (!form.password || form.password.length < 8) {
       toast.error('Password must be at least 8 characters')
       return
@@ -68,13 +75,27 @@ export default function UserCreate() {
       return
     }
 
+    // Uniqueness checks
+    try {
+      const emailCheck = await api.checkUniqueUser('email', form.email.trim())
+      if (!emailCheck.unique) { toast.error('Email already exists'); return }
+      if (form.username.trim()) {
+        const userCheck = await api.checkUniqueUser('username', form.username.trim())
+        if (!userCheck.unique) { toast.error('Username already exists'); return }
+      }
+    } catch {}
+
     setSaving(true)
     try {
       await api.createUser({
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
         email: form.email.trim(),
+        username: form.username.trim() || '',
         phone: form.phone.trim() || null,
+        extension: form.extension.trim() || '',
+        country_code: form.country_code.trim() || '',
+        password: form.password,
         level: form.level,
         status: form.status,
         notes: form.notes.trim() || null,
@@ -162,9 +183,32 @@ export default function UserCreate() {
                   </div>
                 </div>
                 <div className="col-md-6">
+                  <label className="form-label">Username</label>
+                  <div className="input-group">
+                    <span className="input-group-text"><i className="bi bi-person-badge"></i></span>
+                    <input
+                      type="text"
+                      className="form-control"
+                      name="username"
+                      value={form.username}
+                      onChange={handleChange}
+                      placeholder="Enter username"
+                    />
+                  </div>
+                </div>
+                <div className="col-md-4">
                   <label className="form-label">Phone Number</label>
                   <div className="input-group">
                     <span className="input-group-text"><i className="bi bi-telephone"></i></span>
+                    <input
+                      type="text"
+                      className="form-control"
+                      name="country_code"
+                      value={form.country_code}
+                      onChange={handleChange}
+                      placeholder="+1"
+                      style={{ maxWidth: 60 }}
+                    />
                     <input
                       type="tel"
                       className="form-control"

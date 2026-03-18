@@ -150,8 +150,38 @@ export default function Dashboard() {
     '90+': outstandingInvoices.filter(i => i.age === '90+').length,
   }
 
+  const wsLinks = [
+    { label: 'Dashboard', icon: 'bi-grid-1x2-fill', path: '/dashboard', active: true },
+    { label: 'Customers', icon: 'bi-building', path: '/customers/active' },
+    { label: 'Users', icon: 'bi-person-lines-fill', path: '/admin/users' },
+    { label: 'Sales Reps', icon: 'bi-people', path: '/sales-reps/active' },
+    { label: 'Invoices', icon: 'bi-receipt', path: '/invoices' },
+    { label: 'Commissions', icon: 'bi-cash-stack', path: '/commissions' },
+    { label: 'Reports', icon: 'bi-graph-up', path: '/reports' },
+    { label: 'Airfeet PO', icon: 'bi-box-seam', path: '/airfeet-po' },
+    { label: 'Events', icon: 'bi-calendar-event', path: '/events' },
+  ]
+
   return (
     <>
+      {/* Workspace Navigation */}
+      <div className="d-flex flex-wrap gap-2 mb-4" style={{ background: '#fff', borderRadius: 12, padding: '12px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+        {wsLinks.map((link, i) => (
+          <Link key={i} to={link.path} className="d-flex align-items-center gap-2 text-decoration-none px-3 py-2"
+            style={{
+              borderRadius: 8, fontSize: 13, fontWeight: 600, transition: 'all 0.15s',
+              background: link.active ? '#2563eb' : '#f1f5f9',
+              color: link.active ? '#fff' : '#475569',
+            }}
+            onMouseEnter={e => { if (!link.active) { e.currentTarget.style.background = '#e2e8f0' } }}
+            onMouseLeave={e => { if (!link.active) { e.currentTarget.style.background = '#f1f5f9' } }}
+          >
+            <i className={`bi ${link.icon}`} style={{ fontSize: 14 }}></i>
+            {link.label}
+          </Link>
+        ))}
+      </div>
+
       {/* Welcome Banner */}
       <div className="mb-4" style={{
         background: 'linear-gradient(135deg, #2563eb 0%, #1e40af 100%)',

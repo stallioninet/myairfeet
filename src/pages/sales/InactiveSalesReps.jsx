@@ -173,15 +173,15 @@ export default function InactiveSalesReps() {
             <table className="table table-hover mb-0 align-middle">
               <thead className="bg-light">
                 <tr>
-                  <th className="ps-4" style={{ width: 50 }}>#</th>
+                  <th className="ps-4" style={{ width: 70 }}>REP#</th>
                   <th>Rep Name</th>
-                  <th>Username</th>
-                  <th>Email</th>
+                  <th>Address</th>
+                  <th>City</th>
+                  <th>Zip</th>
                   <th>Phone</th>
-                  <th>REP Code</th>
-                  <th>Last Login</th>
+                  <th>Email</th>
+                  <th className="pe-4 text-center" style={{ width: 170 }}>Action</th>
                   <th>Status</th>
-                  <th className="pe-4 text-center" style={{ width: 170 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -201,7 +201,7 @@ export default function InactiveSalesReps() {
                   </tr>
                 ) : paginatedReps.map((r, index) => (
                   <tr key={r._id}>
-                    <td className="ps-4 text-muted">{(page - 1) * perPage + index + 1}</td>
+                    <td className="ps-4"><code className="px-2 py-1 rounded" style={{ background: '#f1f5f9', color: '#475569', fontSize: '0.82rem' }}>{r.rep_number || '-'}</code></td>
                     <td>
                       <div className="d-flex align-items-center gap-2">
                         <div
@@ -217,36 +217,17 @@ export default function InactiveSalesReps() {
                           <div className="fw-medium text-muted">
                             {r.first_name} {r.last_name}
                           </div>
-                          <div className="text-muted" style={{ fontSize: '0.75rem' }}>
-                            Added {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-                          </div>
                         </div>
                       </div>
                     </td>
-                    <td><span className="small text-muted">{r.username || '-'}</span></td>
-                    <td>
-                      <a href={`mailto:${r.email}`} className="text-decoration-none text-muted">
-                        {r.email}
-                      </a>
-                    </td>
+                    <td><span className="small text-muted">{r.address || '-'}</span></td>
+                    <td><span className="small text-muted">{r.city || '-'}</span></td>
+                    <td><span className="small text-muted">{r.zip || '-'}</span></td>
                     <td><span className="small text-muted">{r.phone || '-'}{r.extension ? ' x' + r.extension : ''}</span></td>
-                    <td><code className="px-2 py-1 rounded" style={{ background: '#f1f5f9', color: '#475569', fontSize: '0.82rem' }}>{r.rep_number || '-'}</code></td>
                     <td>
-                      {r.last_login ? (
-                        <>
-                          <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                            {formatDate(r.last_login)}
-                          </div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-light)' }}>
-                            {timeAgo(r.last_login)}
-                          </div>
-                        </>
-                      ) : (
-                        <span className="text-muted" style={{ fontSize: '0.82rem' }}>Never</span>
-                      )}
-                    </td>
-                    <td>
-                      <span className="badge badge-inactive">Inactive</span>
+                      <a href={`mailto:${r.email}`} className="text-decoration-none text-muted small">
+                        {r.email || '-'}
+                      </a>
                     </td>
                     <td className="pe-4 text-center">
                       <Link to={'/sales-reps/' + r._id} className="btn btn-sm btn-action btn-outline-info me-1" title="View">

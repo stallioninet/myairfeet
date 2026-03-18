@@ -14,7 +14,7 @@ export default function CreateSalesRep() {
   const [form, setForm] = useState({
     rep_number: '', first_name: '', last_name: '', email: '', username: '', password: '',
     territory: '', commission_rate: '', about: '',
-    start_date: '', status: 'active'
+    start_date: '', status: 'active', blocked: false, site_admin: false,
   })
   const [phones, setPhones] = useState([{ number: '', ext: '', type: 'Main' }])
   const [addresses, setAddresses] = useState([
@@ -41,7 +41,9 @@ export default function CreateSalesRep() {
           commission_rate: data.commission_rate || '',
           about: data.about || '',
           start_date: data.start_date ? data.start_date.split('T')[0] : '',
-          status: data.status || 'active'
+          status: data.status || 'active',
+          blocked: data.blocked || false,
+          site_admin: data.site_admin || false,
         })
         if (data.phones && data.phones.length > 0) {
           setPhones(data.phones.map(p => ({ number: p.number || '', ext: p.ext || '', type: p.type || 'Main' })))
@@ -81,6 +83,22 @@ export default function CreateSalesRep() {
     if (!form.first_name) { toast.error('First name is required'); return }
     if (!form.last_name) { toast.error('Last name is required'); return }
     if (!form.email) { toast.error('Email is required'); return }
+
+    // Email format validation
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) { toast.error('Invalid email format'); return }
+
+    // Uniqueness checks
+    const excludeId = isEdit ? id : undefined
+    try {
+      const emailCheck = await api.checkUniqueSalesRep('email', form.email, excludeId)
+      if (!emailCheck.unique) { toast.error('Email already exists'); return }
+      const repCheck = await api.checkUniqueSalesRep('rep_number', form.rep_number, excludeId)
+      if (!repCheck.unique) { toast.error('Sales REP # already exists'); return }
+      if (form.username) {
+        const userCheck = await api.checkUniqueSalesRep('username', form.username, excludeId)
+        if (!userCheck.unique) { toast.error('Username already exists'); return }
+      }
+    } catch {}
 
     setSaving(true)
     try {
@@ -212,6 +230,24 @@ export default function CreateSalesRep() {
           <div className="mb-4">
             <label className="form-label small fw-semibold">About Sales REP <span className="text-danger">*</span></label>
             <textarea className="form-control" rows="5" value={form.about} onChange={e => set('about', e.target.value)}></textarea>
+          </div>
+
+          {/* Admin Flags */}
+          <div className="row g-3 mb-4">
+            <div className="col-md-3">
+              <div className="form-check form-switch">
+                <input className="form-check-input" type="checkbox" id="blocked" checked={form.blocked} onChange={e => set('blocked', e.target.checked)} style={{ width: 40, height: 20 }} />
+                <label className="form-check-label fw-semibold ms-2" htmlFor="blocked">Blocked</label>
+              </div>
+              <div className="text-muted" style={{ fontSize: 11 }}>Prevent this user from logging in</div>
+            </div>
+            <div className="col-md-3">
+              <div className="form-check form-switch">
+                <input className="form-check-input" type="checkbox" id="site_admin" checked={form.site_admin} onChange={e => set('site_admin', e.target.checked)} style={{ width: 40, height: 20 }} />
+                <label className="form-check-label fw-semibold ms-2" htmlFor="site_admin">Site Admin</label>
+              </div>
+              <div className="text-muted" style={{ fontSize: 11 }}>Grant full admin access</div>
+            </div>
           </div>
 
           <hr className="my-4" />

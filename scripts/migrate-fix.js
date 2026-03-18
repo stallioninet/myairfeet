@@ -107,6 +107,7 @@ async function fix() {
     email: a.email || '',
     phone: a.phoneno || '',
     address_type: a.address_type || '',
+    shipping_acnt: a.shipping_acnt || '',
     status: a.address_status === '1' ? 'active' : 'inactive',
     created_at: validDate(a.address_created_on) || new Date(),
   })).filter(d => d.customer)

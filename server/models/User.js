@@ -5,7 +5,10 @@ const userSchema = new mongoose.Schema({
   last_name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   username: { type: String, default: '' },
+  password: { type: String, default: '' },
   phone: { type: String, default: null },
+  extension: { type: String, default: '' },
+  country_code: { type: String, default: '' },
   level: {
     type: String,
     enum: ['superuser', 'admin', 'sales-rep', 'data-entry'],

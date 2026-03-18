@@ -111,9 +111,34 @@ export default function ActiveCustomers() {
     setShowModal(true)
   }
 
+  function validatePhone(phone) {
+    if (!phone) return true
+    const cleaned = phone.replace(/[\s\-\(\)\.]/g, '')
+    return /^\+?\d{7,15}$/.test(cleaned)
+  }
+
   async function handleSave(e) {
     e.preventDefault()
     if (!form.company_name.trim()) { toast.error('Company name is required'); return }
+
+    // Phone validation
+    if (form.company_phone && !validatePhone(form.company_phone)) {
+      toast.error('Invalid phone number format'); return
+    }
+
+    // Email validation
+    if (form.company_email_address && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.company_email_address)) {
+      toast.error('Invalid email address format'); return
+    }
+
+    // Uniqueness check
+    try {
+      const unique = await api.checkUniqueCustomer(form.company_name.trim(), editingCustomer?._id)
+      if (!unique.unique) {
+        toast.error(`Company name "${form.company_name}" already exists`); return
+      }
+    } catch {}
+
     try {
       if (editingCustomer) {
         await api.updateCustomer(editingCustomer._id, form)
@@ -312,18 +337,18 @@ export default function ActiveCustomers() {
       {/* Create/Edit Modal */}
       {showModal && (<>
         <div className="modal-backdrop fade show"></div>
-        <div className="modal fade show d-block" tabIndex="-1">
-          <div className="modal-dialog modal-lg modal-dialog-scrollable">
-            <div className="modal-content border-0 shadow">
-              <div className="modal-header text-white" style={{ background: 'linear-gradient(135deg, #2563eb, #1e40af)' }}>
+        <div className="modal fade show d-block" tabIndex="-1" style={{ overflow: 'auto' }}>
+          <div className="modal-dialog modal-lg modal-dialog-scrollable" style={{ maxHeight: '90vh', margin: '1.75rem auto' }}>
+            <div className="modal-content border-0 shadow" style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+              <div className="modal-header text-white" style={{ background: 'linear-gradient(135deg, #2563eb, #1e40af)', flexShrink: 0 }}>
                 <h5 className="modal-title">
                   <i className={`bi ${editingCustomer ? 'bi-pencil' : 'bi-plus-circle'} me-2`}></i>
                   {editingCustomer ? 'Edit Customer' : 'Add New Customer'}
                 </h5>
                 <button type="button" className="btn-close btn-close-white" onClick={() => setShowModal(false)}></button>
               </div>
-              <form onSubmit={handleSave}>
-                <div className="modal-body">
+              <form onSubmit={handleSave} style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div className="modal-body" style={{ overflowY: 'auto', flex: 1 }}>
                   {/* Company Info */}
                   <h6 className="fw-semibold text-muted mb-3"><i className="bi bi-building me-2"></i>Company Information</h6>
                   <div className="row g-3 mb-4">

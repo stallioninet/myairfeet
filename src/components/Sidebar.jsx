@@ -17,6 +17,7 @@ const navSections = [
       { label: 'Create User', path: '/admin/users/create' },
       { label: 'User Levels', path: '/admin/levels' },
       { label: 'User Access', path: '/admin/access' },
+      { label: 'Default Access', path: '/admin/default-access' },
       { label: 'User Activity', path: '/admin/activity' },
       { label: 'Privileges', path: '/admin/privileges' },
       { label: 'Backup', path: '/admin/backup' },
@@ -49,7 +50,10 @@ const navSections = [
     children: [
       { label: 'Active', path: '/customers/active' },
       { label: 'Inactive', path: '/customers/inactive' },
+      { label: 'Pilot', path: '/customers/pilot' },
       { label: 'Suppliers', path: '/customers/suppliers' },
+      { label: 'Customer Types', path: '/customers/types' },
+      { label: 'Import / Export', path: '/customers/import-export' },
     ]
   },
   {
@@ -57,14 +61,16 @@ const navSections = [
     icon: 'bi-receipt',
     label: 'Invoices',
     children: [
-      { label: 'All Invoices', path: '/invoices', disabled: true },
-      { label: 'Outstanding', path: '/invoices/outstanding', disabled: true },
+      { label: 'Invoices', path: '/invoices' },
+      { label: 'Outstanding', path: '/invoices/outstanding' },
+      { label: 'Outstand Emails', path: '/invoices/outstand-emails' },
     ]
   },
   {
     title: null,
     items: [
-      { label: 'Commissions', icon: 'bi-cash-stack', path: '/commissions', disabled: true },
+      { label: 'Commissions', icon: 'bi-cash-stack', path: '/commissions' },
+      { label: 'Airfeet PO', icon: 'bi-file-earmark-text', path: '/airfeet-po' },
       { label: 'Events', icon: 'bi-calendar-event', path: '/events' },
     ]
   },
@@ -73,8 +79,11 @@ const navSections = [
     icon: 'bi-graph-up',
     label: 'Reports',
     children: [
-      { label: 'Yearly', path: '/reports/yearly', disabled: true },
-      { label: 'Monthly', path: '/reports/monthly', disabled: true },
+      { label: 'Year', path: '/reports?tab=year' },
+      { label: 'Month', path: '/reports?tab=month' },
+      { label: 'Sales Rep Month', path: '/reports?tab=rep-month' },
+      { label: 'Sales Rep Year', path: '/reports?tab=rep-year' },
+      { label: 'Paid Invoice', path: '/reports?tab=paid' },
     ]
   },
 ]

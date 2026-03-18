@@ -23,33 +23,66 @@ router.get('/stats', async (req, res) => {
 // GET all sales reps (from app_user where user_type = sales_rep)
 router.get('/', async (req, res) => {
   try {
+    const db = mongoose.connection.db
     const { status } = req.query
     const filter = { user_type: 'sales_rep' }
     if (status) filter.status = status
-    const reps = await getCollection().find(filter).sort({ created_at: -1 }).toArray()
+    const reps = await getCollection().find(filter).sort({ user_cust_code: -1 }).toArray()
+
+    // Fetch primary addresses and contacts for all reps in one query
+    const legacyIds = reps.map(r => r.legacy_id).filter(Boolean)
+    const addresses = legacyIds.length > 0
+      ? await db.collection('user_addresses').find({ user_legacy_id: { $in: legacyIds }, status: 'active' }).toArray()
+      : []
+    const addrMap = {}
+    addresses.forEach(a => {
+      if (!addrMap[a.user_legacy_id] || a.address_type === 'address_1') {
+        addrMap[a.user_legacy_id] = a
+      }
+    })
+
+    // Fetch user_contacts for phone numbers
+    const contacts = legacyIds.length > 0
+      ? await db.collection('user_contacts').find({ user_legacy_id: { $in: legacyIds }, status: 'active' }).toArray()
+      : []
+    const contactMap = {}
+    contacts.forEach(c => {
+      if (!contactMap[c.user_legacy_id]) contactMap[c.user_legacy_id] = c
+    })
+
     // Map app_user fields to what frontend expects
-    const mapped = reps.map(r => ({
-      _id: r._id,
-      legacy_id: r.legacy_id,
-      rep_number: r.user_cust_code || '',
-      first_name: (r.first_name || '').trim(),
-      last_name: (r.last_name || '').trim(),
-      username: r.username || '',
-      email: r.email || '',
-      phone: r.phone || '',
-      extension: r.extension || '',
-      user_notes: r.user_notes || '',
-      user_type: r.user_type || '',
-      user_cust_code: r.user_cust_code || '',
-      profile_image: r.profile_image || '',
-      status: r.status || 'active',
-      blocked: r.blocked || false,
-      site_admin: r.site_admin || false,
-      created_at: r.created_at,
-      updated_at: r.updated_at,
-      last_login: r.last_login,
-      last_logout: r.last_logout,
-    }))
+    const mapped = reps.map(r => {
+      const addr = addrMap[r.legacy_id] || {}
+      const contact = contactMap[r.legacy_id] || {}
+      const phone = r.phone || contact.contact_number || addr.phone_number || ''
+      const ext = r.extension || contact.extension || addr.extension || ''
+      return {
+        _id: r._id,
+        legacy_id: r.legacy_id,
+        rep_number: r.user_cust_code || '',
+        first_name: (r.first_name || '').trim(),
+        last_name: (r.last_name || '').trim(),
+        username: r.username || '',
+        email: r.email || '',
+        phone,
+        extension: ext,
+        user_notes: r.user_notes || '',
+        user_type: r.user_type || '',
+        user_cust_code: r.user_cust_code || '',
+        profile_image: r.profile_image || '',
+        status: r.status || 'active',
+        blocked: r.blocked || false,
+        site_admin: r.site_admin || false,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        last_login: r.last_login,
+        last_logout: r.last_logout,
+        address: addr.address_1 || '',
+        city: addr.city || '',
+        state: addr.state || '',
+        zip: addr.post_code || '',
+      }
+    })
     res.json(mapped)
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -225,6 +258,25 @@ router.get('/invoice/:invoiceId', async (req, res) => {
 })
 
 // GET commission stats for header
+// GET check unique email/username/rep_number
+router.get('/check-unique', async (req, res) => {
+  try {
+    const col = getCollection()
+    const { field, value, exclude_id } = req.query
+    if (!field || !value) return res.json({ unique: true })
+    const allowedFields = ['email', 'username', 'rep_number']
+    if (!allowedFields.includes(field)) return res.status(400).json({ error: 'Invalid field' })
+    const filter = { [field]: { $regex: new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }
+    if (exclude_id) {
+      try { filter._id = { $ne: new mongoose.Types.ObjectId(exclude_id) } } catch {}
+    }
+    const existing = await col.findOne(filter)
+    res.json({ unique: !existing })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 router.get('/:id/commission-stats', async (req, res) => {
   try {
     const db = mongoose.connection.db
@@ -243,6 +295,13 @@ router.get('/:id/commission-stats', async (req, res) => {
     if (commissions.length === 0) return res.json({ total_commission: 0, ytd_outstanding: 0, ytd_paid: 0 })
 
     const poIds = [...new Set(commissions.map(c => c.po_id))]
+
+    // Get invoices for net_amount
+    const invoices = await db.collection('invoices')
+      .find({ legacy_id: { $in: poIds } })
+      .toArray()
+    const invMap = {}
+    invoices.forEach(inv => { invMap[inv.legacy_id] = inv })
 
     // Get summaries for total_commission per PO
     const summaries = await db.collection('invoice_commission_summary')
@@ -266,19 +325,26 @@ router.get('/:id/commission-stats', async (req, res) => {
     let ytdPaid = 0
 
     commissions.forEach(c => {
+      const inv = invMap[c.po_id] || {}
       const sum = sumMap[c.po_id] || {}
       const comTotal = sum.total_commission || 0
       const repShare = comTotal > 0 ? (c.total_price || 0) / comTotal : 0
       const pays = payMap[c.po_id] || []
+      const totalReceived = pays.reduce((s, p) => s + (p.received_amt || 0), 0)
       const partialTotal = pays.reduce((s, p) => s + (p.partial_com_total || 0), 0)
       const repPayment = partialTotal * repShare
+      const netAmt = inv.net_amount || 0
+      const netCents = Math.round(netAmt * 100)
+      const paidCents = Math.round(totalReceived * 100)
+      const balanceAmt = paidCents > 0 && netCents <= paidCents ? 2
+        : paidCents > 0 && netCents > paidCents ? 1 : 0
 
-      if (sum.commission_paid_status === 1) {
-        totalCommission += repPayment
+      if (balanceAmt === 2) {
+        ytdPaid += repPayment
+      } else {
+        ytdOutstanding += repPayment
       }
-      // YTD: all commission payments for this rep
-      ytdOutstanding += repPayment
-      ytdPaid += repPayment
+      totalCommission += repPayment
     })
 
     res.json({
@@ -337,28 +403,53 @@ router.get('/:id/commissions', async (req, res) => {
       payMap[p.po_id].push(p)
     })
 
-    const result = commissions.map(c => {
-      const inv = invMap[c.po_id] || {}
-      const sum = sumMap[c.po_id] || {}
-      const pays = payMap[c.po_id] || []
-      const totalPaid = pays.reduce((s, p) => s + (p.received_amt || 0), 0)
-      const latestPay = pays.length > 0 ? pays.sort((a, b) => new Date(b.commission_paid_date || 0) - new Date(a.commission_paid_date || 0))[0] : null
-      return {
-        _id: c._id,
-        legacy_id: c.legacy_id,
-        po_id: c.po_id,
-        invoice_number: inv.invoice_number || '',
-        invoice_date: inv.invoice_date,
-        total_qty: inv.total_qty || 0,
-        po_total: inv.net_amount || 0,
-        com_total: sum.total_commission || 0,
-        rep_com_total: c.total_price || 0,
-        commission_paid_status: sum.commission_paid_status || 0,
-        comm_paid_date: latestPay ? latestPay.commission_paid_date : sum.comm_paid_date,
-        comm_paid_amount: totalPaid,
-        compaid_mode: latestPay ? latestPay.compaid_mode : '',
-      }
+    // Fetch per-rep payment records
+    const repPayments = await db.collection('invoice_payment_reps')
+      .find({ po_id: { $in: poIds.map(String) }, inv_pay_rep_status: '1' })
+      .toArray()
+    const repPayMap = {} // key: `${po_id}_${rep_id}` -> total paid
+    repPayments.forEach(p => {
+      const key = `${p.po_id}_${p.rep_id}`
+      repPayMap[key] = (repPayMap[key] || 0) + (parseFloat(p.comm_paid_amount) || 0)
     })
+
+    const result = commissions
+      .filter(c => invMap[c.po_id])
+      .map(c => {
+        const inv = invMap[c.po_id]
+        const sum = sumMap[c.po_id] || {}
+        const pays = payMap[c.po_id] || []
+        // Use per-rep payment if available, fallback to overall
+        const repPaidKey = `${c.po_id}_${c.sales_rep_id}`
+        const repPaid = repPayMap[repPaidKey] || 0
+        const totalPaid = repPaid > 0 ? repPaid : pays.reduce((s, p) => s + (p.received_amt || 0), 0)
+        const latestPay = pays.length > 0 ? pays.sort((a, b) => new Date(b.commission_paid_date || 0) - new Date(a.commission_paid_date || 0))[0] : null
+        return {
+          _id: c._id,
+          legacy_id: c.legacy_id,
+          po_id: c.po_id,
+          comm_id: sum._id ? String(sum._id) : null,
+          invoice_number: inv.invoice_number || '',
+          invoice_date: inv.invoice_date,
+          total_qty: inv.total_qty || 0,
+          po_total: inv.net_amount || 0,
+          com_total: sum.total_commission || 0,
+          rep_com_total: c.total_price || 0,
+          commission_paid_status: (() => {
+            // Check if manually marked as paid in commission summary
+            if (sum.commission_paid_status === 1 || sum.commission_paid_status === '1') return 2
+            const commTotal = Math.round((c.total_price || 0) * 100)
+            const paid = Math.round(totalPaid * 100)
+            if (paid > 0 && paid >= commTotal) return 2
+            if (paid > 0 && paid < commTotal) return 1
+            return 0
+          })(),
+          comm_paid_date: latestPay ? latestPay.commission_paid_date : sum.comm_paid_date,
+          comm_paid_amount: totalPaid,
+          compaid_mode: latestPay ? latestPay.compaid_mode : '',
+        }
+      })
+      .sort((a, b) => b.po_id - a.po_id)
 
     res.json(result)
   } catch (err) {
@@ -605,8 +696,18 @@ router.post('/', async (req, res) => {
       email: (req.body.email || '').trim(),
       phone: (req.body.phone || '').trim(),
       extension: (req.body.extension || '').trim(),
+      rep_number: (req.body.rep_number || '').trim(),
       user_cust_code: (req.body.user_cust_code || '').trim(),
       user_notes: (req.body.user_notes || '').trim(),
+      territory: (req.body.territory || '').trim(),
+      commission_rate: parseFloat(req.body.commission_rate) || 0,
+      address: (req.body.address || '').trim(),
+      city: (req.body.city || '').trim(),
+      state: (req.body.state || '').trim(),
+      zip: (req.body.zip || '').trim(),
+      about: (req.body.about || '').trim(),
+      phones: req.body.phones || [],
+      addresses: req.body.addresses || [],
       user_type: 'sales_rep',
       status: 'active',
       blocked: false,
@@ -614,6 +715,7 @@ router.post('/', async (req, res) => {
       created_at: new Date(),
       updated_at: new Date(),
     }
+    if (req.body.password) doc.password = req.body.password
     const result = await getCollection().insertOne(doc)
     res.status(201).json({ _id: result.insertedId, ...doc })
   } catch (err) {

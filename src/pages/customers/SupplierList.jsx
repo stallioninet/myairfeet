@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../../lib/api'
 import Pagination from '../../components/Pagination'
@@ -23,6 +23,7 @@ const emptyForm = {
 }
 
 export default function SupplierList() {
+  const navigate = useNavigate()
   const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0, activeTypes: 0 })
@@ -32,7 +33,6 @@ export default function SupplierList() {
   const [showModal, setShowModal] = useState(false)
   const [editingSupplier, setEditingSupplier] = useState(null)
   const [form, setForm] = useState({ ...emptyForm })
-  const [viewSupplier, setViewSupplier] = useState(null)
   const [deleteSupplier, setDeleteSupplier] = useState(null)
 
   useEffect(() => { fetchData() }, [])
@@ -212,7 +212,7 @@ export default function SupplierList() {
                           {getInitials(s.supplier_name)}
                         </div>
                         <div>
-                          <a href="#" className="fw-medium text-decoration-none" onClick={ev => { ev.preventDefault(); setViewSupplier(s) }}>{s.supplier_name}</a>
+                          <a href="#" className="fw-medium text-decoration-none" onClick={ev => { ev.preventDefault(); navigate(`/customers/suppliers/${s._id}`) }}>{s.supplier_name}</a>
                         </div>
                       </div>
                     </td>
@@ -220,7 +220,7 @@ export default function SupplierList() {
                     <td><span style={{ fontSize: '0.85rem' }}>{s.phone || '-'}</span></td>
                     <td>{s.email ? <a href={`mailto:${s.email}`} className="text-decoration-none" style={{ fontSize: '0.85rem' }}>{s.email}</a> : <span className="text-muted">-</span>}</td>
                     <td className="pe-4 text-center">
-                      <button className="btn btn-sm btn-action btn-outline-info me-1" title="View" onClick={() => setViewSupplier(s)}>
+                      <button className="btn btn-sm btn-action btn-outline-info me-1" title="View" onClick={() => navigate(`/customers/suppliers/${s._id}`)}>
                         <i className="bi bi-eye"></i>
                       </button>
                       <button className="btn btn-sm btn-action btn-outline-primary me-1" title="Edit" onClick={() => openEdit(s)}>
@@ -336,70 +336,6 @@ export default function SupplierList() {
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
-        </div>
-      </>)}
-
-      {/* View Detail Modal */}
-      {viewSupplier && (<>
-        <div className="modal-backdrop fade show"></div>
-        <div className="modal fade show d-block" tabIndex="-1">
-          <div className="modal-dialog modal-lg modal-dialog-scrollable">
-            <div className="modal-content border-0 shadow">
-              <div className="modal-header text-white" style={{ background: 'linear-gradient(135deg, #2563eb, #1e40af)' }}>
-                <h5 className="modal-title"><i className="bi bi-building me-2"></i>{viewSupplier.supplier_name}</h5>
-                <button type="button" className="btn-close btn-close-white" onClick={() => setViewSupplier(null)}></button>
-              </div>
-              <div className="modal-body">
-                <div className="row g-4">
-                  <div className="col-md-6">
-                    <h6 className="fw-semibold text-muted mb-3"><i className="bi bi-building me-2"></i>Supplier Info</h6>
-                    <table className="table table-sm mb-0">
-                      <tbody>
-                        <tr><td className="text-muted" style={{ width: 140 }}>Name</td><td className="fw-medium">{viewSupplier.supplier_name}</td></tr>
-                        <tr><td className="text-muted">Code</td><td>{viewSupplier.customer_code || '-'}</td></tr>
-                        <tr><td className="text-muted">Type</td><td>{viewSupplier.supplier_type ? <span className="badge bg-danger-subtle text-danger rounded-pill px-2">{viewSupplier.supplier_type}</span> : '-'}</td></tr>
-                        <tr><td className="text-muted">Status</td><td><span className={`badge badge-${viewSupplier.status === 'active' ? 'active' : 'inactive'}`}>{viewSupplier.status === 'active' ? 'Active' : 'Inactive'}</span></td></tr>
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="col-md-6">
-                    <h6 className="fw-semibold text-muted mb-3"><i className="bi bi-telephone me-2"></i>Contact</h6>
-                    <table className="table table-sm mb-0">
-                      <tbody>
-                        <tr><td className="text-muted" style={{ width: 140 }}>Contact</td><td>{viewSupplier.contact_name || '-'}</td></tr>
-                        <tr><td className="text-muted">Phone</td><td>{viewSupplier.phone || '-'}</td></tr>
-                        <tr><td className="text-muted">Email</td><td>{viewSupplier.email ? <a href={`mailto:${viewSupplier.email}`}>{viewSupplier.email}</a> : '-'}</td></tr>
-                        <tr><td className="text-muted">Location</td><td>{[viewSupplier.city, viewSupplier.state].filter(Boolean).join(', ') || '-'}</td></tr>
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="col-md-6">
-                    <h6 className="fw-semibold text-muted mb-3"><i className="bi bi-file-text me-2"></i>Business Terms</h6>
-                    <table className="table table-sm mb-0">
-                      <tbody>
-                        <tr><td className="text-muted" style={{ width: 140 }}>Terms</td><td>{viewSupplier.terms || '-'}</td></tr>
-                        <tr><td className="text-muted">FOB</td><td>{viewSupplier.fob || '-'}</td></tr>
-                        <tr><td className="text-muted">Ship Via</td><td>{viewSupplier.ship_via || '-'}</td></tr>
-                        <tr><td className="text-muted">Project</td><td>{viewSupplier.project || '-'}</td></tr>
-                      </tbody>
-                    </table>
-                  </div>
-                  {viewSupplier.notes && (
-                    <div className="col-12">
-                      <h6 className="fw-semibold text-muted mb-2"><i className="bi bi-chat-left-text me-2"></i>Notes</h6>
-                      <div className="bg-light rounded-3 p-3" style={{ fontSize: '0.85rem' }}>{viewSupplier.notes}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button className="btn btn-outline-primary" onClick={() => { openEdit(viewSupplier); setViewSupplier(null) }}>
-                  <i className="bi bi-pencil me-1"></i>Edit
-                </button>
-                <button className="btn btn-outline-secondary" onClick={() => setViewSupplier(null)}>Close</button>
-              </div>
             </div>
           </div>
         </div>

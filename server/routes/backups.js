@@ -27,11 +27,25 @@ router.get('/stats', async (req, res) => {
     const successful = backups.filter(b => b.status === 'success').length
     const totalSize = backups.reduce((sum, b) => sum + (b.size || 0), 0)
     const settings = await BackupSettings.findOne() || { frequency: 'daily' }
+    // Calculate next backup time
+    const lastBackup = backups.filter(b => b.status === 'success').sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
+    let nextBackup = null
+    if (settings.auto_backup !== false && lastBackup) {
+      const last = new Date(lastBackup.created_at)
+      if (settings.frequency === 'daily') nextBackup = new Date(last.getTime() + 24 * 60 * 60 * 1000)
+      else if (settings.frequency === 'weekly') nextBackup = new Date(last.getTime() + 7 * 24 * 60 * 60 * 1000)
+      else if (settings.frequency === 'monthly') nextBackup = new Date(last.getTime() + 30 * 24 * 60 * 60 * 1000)
+    }
+    const failed = backups.filter(b => b.status === 'failed').length
+
     res.json({
       total,
       successful,
+      failed,
       totalSize: (totalSize / (1024 * 1024)).toFixed(1),
-      schedule: settings.frequency.charAt(0).toUpperCase() + settings.frequency.slice(1),
+      schedule: settings.auto_backup !== false ? settings.frequency.charAt(0).toUpperCase() + settings.frequency.slice(1) : 'Disabled',
+      nextBackup: nextBackup ? nextBackup.toISOString() : null,
+      retention: settings.retention || 30,
     })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -80,6 +94,26 @@ router.post('/create', async (req, res) => {
       gridfs_id: gridfsId,
     })
     await backup.save()
+
+    // Check if email notification is enabled
+    const settings = await BackupSettings.findOne()
+    if (settings?.email_notifications) {
+      console.log(`[Backup] Email notification: Manual backup "${filename}" completed (${totalRecords} records, ${(sizeBytes / 1024 / 1024).toFixed(2)} MB)`)
+    }
+
+    // Auto-cleanup old backups based on retention
+    if (settings?.retention) {
+      const cutoff = new Date()
+      cutoff.setDate(cutoff.getDate() - settings.retention)
+      const oldBackups = await Backup.find({ created_at: { $lt: cutoff } })
+      for (const old of oldBackups) {
+        if (old.gridfs_id) {
+          try { await bucket.delete(old.gridfs_id) } catch {}
+        }
+        await Backup.findByIdAndDelete(old._id)
+      }
+      if (oldBackups.length > 0) console.log(`[Backup] Cleaned ${oldBackups.length} expired backups`)
+    }
 
     res.status(201).json({
       _id: backup._id,

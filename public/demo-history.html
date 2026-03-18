@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>History List - Design Demo</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<style>
+  body { background: #f1f5f9; font-family: 'Segoe UI', system-ui, sans-serif; }
+  .page-wrap { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+  /* === DESIGN A: Expandable Row Detail === */
+  .hist-row { cursor: pointer; transition: background 0.15s; }
+  .hist-row:hover { background: #f0f7ff !important; }
+  .hist-row.expanded { background: #eef4ff !important; border-bottom: none; }
+  .detail-panel { background: #f8fafc; border-top: 1px dashed #cbd5e1; animation: slideDown 0.2s ease; }
+  @keyframes slideDown { from { opacity: 0; max-height: 0; } to { opacity: 1; max-height: 500px; } }
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .detail-section { padding: 14px 18px; }
+  .detail-section:first-child { border-right: 1px solid #e2e8f0; }
+  .detail-section h6 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; margin-bottom: 8px; font-weight: 700; }
+  .detail-item { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12.5px; }
+  .detail-item .label { color: #64748b; }
+  .detail-item .value { font-weight: 600; color: #1e293b; }
+  .detail-item .value.has-value { color: #059669; }
+  .expand-icon { transition: transform 0.2s; font-size: 11px; color: #94a3b8; }
+  .expanded .expand-icon { transform: rotate(90deg); color: #2563eb; }
+
+  /* === DESIGN B: Card Layout === */
+  .hist-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0; overflow: hidden; transition: box-shadow 0.15s; }
+  .hist-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.07); }
+  .hist-card-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: linear-gradient(135deg, #f0fdf4, #ecfdf5); border-bottom: 1px solid #e2e8f0; }
+  .hist-card-body { padding: 12px 16px; }
+  .hist-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+  .hist-card-stat { text-align: center; padding: 6px 4px; background: #f8fafc; border-radius: 6px; }
+  .hist-card-stat .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; font-weight: 600; }
+  .hist-card-stat .stat-value { font-size: 13px; font-weight: 700; color: #334155; margin-top: 2px; }
+  .hist-card-stat .stat-value.nonzero { color: #059669; }
+  .hist-card-footer { padding: 8px 16px; background: #fafbfc; border-top: 1px solid #f1f5f9; display: flex; gap: 12px; flex-wrap: wrap; }
+  .rep-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; background: #eff6ff; color: #1d4ed8; padding: 3px 10px; border-radius: 20px; font-weight: 600; }
+
+  /* === DESIGN C: Compact + Column Groups with Toggles === */
+  .col-toggle { display: inline-flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
+  .col-toggle .btn { font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 600; }
+  .col-toggle .btn.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+
+  /* Pill badge for nonzero */
+  .nz-pill { background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 10px; font-weight: 600; font-size: 11.5px; }
+
+  /* Section header */
+  .demo-section { margin-bottom: 40px; }
+  .demo-section > h4 { font-size: 15px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
+  .demo-section > p { font-size: 13px; color: #64748b; margin-bottom: 16px; }
+  .demo-label { display: inline-block; background: linear-gradient(135deg,#2563eb,#7c3aed); color: #fff; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; margin-bottom: 10px; letter-spacing: 0.05em; }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <h3 class="fw-bold mb-1" style="font-size:20px;">History List &mdash; Layout Options</h3>
+  <p class="text-muted mb-4" style="font-size:13px;">3 design alternatives for displaying 25+ columns without horizontal scrolling</p>
+
+  <!-- ============================================================ -->
+  <!-- DESIGN A: Expandable Row Detail                              -->
+  <!-- ============================================================ -->
+  <div class="demo-section">
+    <span class="demo-label">DESIGN A</span>
+    <h4>Expandable Row Detail</h4>
+    <p>Core columns always visible. Click any row to expand item-type breakdowns and rep commissions below it.</p>
+
+    <div class="card border-0 shadow-sm" style="border-radius:12px; overflow:hidden;">
+      <table class="table table-sm align-middle mb-0" style="font-size:13px;">
+        <thead style="background:#E0F1E2;">
+          <tr>
+            <th style="width:30px;"></th>
+            <th>Line</th>
+            <th>Invoice #</th>
+            <th>Invoice Date</th>
+            <th class="text-end">Qty</th>
+            <th class="text-end">PO Total</th>
+            <th class="text-end">Comm Total</th>
+            <th>Comm Paid</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Row 1 - Expanded -->
+          <tr class="hist-row expanded" onclick="toggleRow(this)">
+            <td><i class="bi bi-chevron-right expand-icon"></i></td>
+            <td>1</td>
+            <td><a href="#" class="fw-semibold text-primary text-decoration-none">11957</a></td>
+            <td>6/19/2024</td>
+            <td class="text-end">1</td>
+            <td class="text-end fw-semibold">$6.95</td>
+            <td class="text-end">$0.00</td>
+            <td><span class="text-muted">&mdash;</span></td>
+          </tr>
+          <tr class="detail-panel" id="detail-1">
+            <td colspan="8" style="padding:0;">
+              <div class="detail-grid">
+                <div class="detail-section">
+                  <h6><i class="bi bi-box-seam me-1"></i>Item Type Breakdown</h6>
+                  <div class="detail-item"><span class="label">INSOLES</span><span class="value has-value">$6.95</span></div>
+                  <div class="detail-item"><span class="label">OTHER</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">AirBoard</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">MAP Spray</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">Alignmed</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">Retail Packaging</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">Fees</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">Miscellaneous</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">Foot Care Products</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">RGH/FSA</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">Majestic</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">YO MES Buy</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">Promo</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">Art Craft - Matco</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">PPE</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">Caring Mill</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">AAFES Tactical O2</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">Clothing</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">Displays &amp; Literature</span><span class="value">$0.00</span></div>
+                </div>
+                <div class="detail-section">
+                  <h6><i class="bi bi-people me-1"></i>Rep Commissions</h6>
+                  <div class="detail-item"><span class="label">Wayne Purcell <span class="text-muted">(02WP)</span></span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">Neil Purcell <span class="text-muted">(01NP)</span></span><span class="value">$0.00</span></div>
+                </div>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Row 2 - Collapsed -->
+          <tr class="hist-row" onclick="toggleRow(this)">
+            <td><i class="bi bi-chevron-right expand-icon"></i></td>
+            <td>2</td>
+            <td><a href="#" class="fw-semibold text-primary text-decoration-none">11958</a></td>
+            <td>6/19/2024</td>
+            <td class="text-end">1</td>
+            <td class="text-end fw-semibold">$6.95</td>
+            <td class="text-end">$0.00</td>
+            <td><span class="text-muted">&mdash;</span></td>
+          </tr>
+          <tr class="detail-panel" id="detail-2" style="display:none;">
+            <td colspan="8" style="padding:0;">
+              <div class="detail-grid">
+                <div class="detail-section">
+                  <h6><i class="bi bi-box-seam me-1"></i>Item Type Breakdown</h6>
+                  <div class="detail-item"><span class="label">INSOLES</span><span class="value has-value">$6.95</span></div>
+                  <div class="detail-item"><span class="label">OTHER</span><span class="value">$0.00</span></div>
+                </div>
+                <div class="detail-section">
+                  <h6><i class="bi bi-people me-1"></i>Rep Commissions</h6>
+                  <div class="detail-item"><span class="label">Wayne Purcell <span class="text-muted">(02WP)</span></span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">Neil Purcell <span class="text-muted">(01NP)</span></span><span class="value">$0.00</span></div>
+                </div>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Row 3 - Collapsed -->
+          <tr class="hist-row" onclick="toggleRow(this)">
+            <td><i class="bi bi-chevron-right expand-icon"></i></td>
+            <td>3</td>
+            <td><a href="#" class="fw-semibold text-primary text-decoration-none">10201</a></td>
+            <td>3/27/2019</td>
+            <td class="text-end">2</td>
+            <td class="text-end fw-semibold">$0.00</td>
+            <td class="text-end">$0.00</td>
+            <td><span class="text-muted">&mdash;</span></td>
+          </tr>
+          <tr class="detail-panel" id="detail-3" style="display:none;">
+            <td colspan="8" style="padding:0;">
+              <div class="detail-grid">
+                <div class="detail-section">
+                  <h6><i class="bi bi-box-seam me-1"></i>Item Type Breakdown</h6>
+                  <div class="detail-item"><span class="label">INSOLES</span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">OTHER</span><span class="value">$0.00</span></div>
+                </div>
+                <div class="detail-section">
+                  <h6><i class="bi bi-people me-1"></i>Rep Commissions</h6>
+                  <div class="detail-item"><span class="label">Wayne Purcell <span class="text-muted">(02WP)</span></span><span class="value">$0.00</span></div>
+                  <div class="detail-item"><span class="label">Neil Purcell <span class="text-muted">(01NP)</span></span><span class="value">$0.00</span></div>
+                </div>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- DESIGN B: Card Layout                                        -->
+  <!-- ============================================================ -->
+  <div class="demo-section">
+    <span class="demo-label">DESIGN B</span>
+    <h4>Card Layout</h4>
+    <p>Each invoice as a card. Summary on top, item-type grid below, rep badges at the bottom. Non-zero values highlighted green.</p>
+
+    <div class="d-flex flex-column gap-3">
+      <!-- Card 1 -->
+      <div class="hist-card">
+        <div class="hist-card-header">
+          <div class="d-flex align-items-center gap-3">
+            <span class="fw-bold" style="font-size:14px;">#1</span>
+            <span class="fw-bold text-primary" style="font-size:14px;">Invoice 11957</span>
+            <span class="text-muted" style="font-size:12px;">6/19/2024</span>
+          </div>
+          <div class="d-flex gap-4" style="font-size:13px;">
+            <span>Qty: <b>1</b></span>
+            <span>PO Total: <b>$6.95</b></span>
+            <span>Comm: <b>$0.00</b></span>
+            <span>Paid: <span class="text-muted">&mdash;</span></span>
+          </div>
+        </div>
+        <div class="hist-card-body">
+          <div class="hist-card-grid">
+            <div class="hist-card-stat"><div class="stat-label">INSOLES</div><div class="stat-value nonzero">$6.95</div></div>
+            <div class="hist-card-stat"><div class="stat-label">OTHER</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">AirBoard</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">MAP Spray</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Alignmed</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Retail Pkg</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Fees</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Misc</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Foot Care</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">RGH/FSA</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Majestic</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">YO MES</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Promo</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Art Craft</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">PPE</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Caring Mill</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">AAFES Tac O2</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Clothing</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Displays</div><div class="stat-value">$0.00</div></div>
+          </div>
+        </div>
+        <div class="hist-card-footer">
+          <span class="rep-badge"><i class="bi bi-person-fill"></i> Wayne Purcell (02WP): $0.00</span>
+          <span class="rep-badge"><i class="bi bi-person-fill"></i> Neil Purcell (01NP): $0.00</span>
+        </div>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="hist-card">
+        <div class="hist-card-header">
+          <div class="d-flex align-items-center gap-3">
+            <span class="fw-bold" style="font-size:14px;">#2</span>
+            <span class="fw-bold text-primary" style="font-size:14px;">Invoice 11958</span>
+            <span class="text-muted" style="font-size:12px;">6/19/2024</span>
+          </div>
+          <div class="d-flex gap-4" style="font-size:13px;">
+            <span>Qty: <b>1</b></span>
+            <span>PO Total: <b>$6.95</b></span>
+            <span>Comm: <b>$0.00</b></span>
+            <span>Paid: <span class="text-muted">&mdash;</span></span>
+          </div>
+        </div>
+        <div class="hist-card-body">
+          <div class="hist-card-grid">
+            <div class="hist-card-stat"><div class="stat-label">INSOLES</div><div class="stat-value nonzero">$6.95</div></div>
+            <div class="hist-card-stat"><div class="stat-label">OTHER</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">AirBoard</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">MAP Spray</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Alignmed</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Retail Pkg</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Fees</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Misc</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Foot Care</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">RGH/FSA</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Majestic</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">YO MES</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Promo</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Art Craft</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">PPE</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Caring Mill</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">AAFES Tac O2</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Clothing</div><div class="stat-value">$0.00</div></div>
+            <div class="hist-card-stat"><div class="stat-label">Displays</div><div class="stat-value">$0.00</div></div>
+          </div>
+        </div>
+        <div class="hist-card-footer">
+          <span class="rep-badge"><i class="bi bi-person-fill"></i> Wayne Purcell (02WP): $0.00</span>
+          <span class="rep-badge"><i class="bi bi-person-fill"></i> Neil Purcell (01NP): $0.00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- DESIGN C: Compact Table + Column Group Toggles               -->
+  <!-- ============================================================ -->
+  <div class="demo-section">
+    <span class="demo-label">DESIGN C</span>
+    <h4>Compact Table with Column Group Toggles</h4>
+    <p>Toggle between column groups: Core (always shown), Item Types, and Rep Commissions. Only non-zero item values displayed as green pills to save space.</p>
+
+    <div class="col-toggle">
+      <button class="btn btn-sm btn-outline-secondary active" onclick="showGroup('core', this)">Core Info</button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="showGroup('items', this)">Item Types</button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="showGroup('reps', this)">Rep Commissions</button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="showGroup('all', this)">Show All</button>
+    </div>
+
+    <div class="card border-0 shadow-sm" style="border-radius:12px; overflow:hidden;">
+      <table class="table table-sm table-hover align-middle mb-0" style="font-size:13px;" id="toggleTable">
+        <thead style="background:#E0F1E2;">
+          <tr>
+            <th>Line</th>
+            <th>Invoice #</th>
+            <th>Invoice Date</th>
+            <th class="text-end">Qty</th>
+            <th class="text-end">PO Total</th>
+            <th class="text-end">Comm Total</th>
+            <th>Comm Paid</th>
+            <th class="col-items" style="display:none;">Item Breakdown</th>
+            <th class="col-reps" style="display:none;">Rep Commissions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td><a href="#" class="fw-semibold text-primary text-decoration-none">11957</a></td>
+            <td>6/19/2024</td>
+            <td class="text-end">1</td>
+            <td class="text-end fw-semibold">$6.95</td>
+            <td class="text-end">$0.00</td>
+            <td><span class="text-muted">&mdash;</span></td>
+            <td class="col-items" style="display:none;">
+              <span class="nz-pill">INSOLES $6.95</span>
+            </td>
+            <td class="col-reps" style="display:none;">
+              <span class="rep-badge" style="font-size:11px;">W.Purcell 02WP: $0.00</span>
+              <span class="rep-badge" style="font-size:11px;">N.Purcell 01NP: $0.00</span>
+            </td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td><a href="#" class="fw-semibold text-primary text-decoration-none">11958</a></td>
+            <td>6/19/2024</td>
+            <td class="text-end">1</td>
+            <td class="text-end fw-semibold">$6.95</td>
+            <td class="text-end">$0.00</td>
+            <td><span class="text-muted">&mdash;</span></td>
+            <td class="col-items" style="display:none;">
+              <span class="nz-pill">INSOLES $6.95</span>
+            </td>
+            <td class="col-reps" style="display:none;">
+              <span class="rep-badge" style="font-size:11px;">W.Purcell 02WP: $0.00</span>
+              <span class="rep-badge" style="font-size:11px;">N.Purcell 01NP: $0.00</span>
+            </td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td><a href="#" class="fw-semibold text-primary text-decoration-none">10201</a></td>
+            <td>3/27/2019</td>
+            <td class="text-end">2</td>
+            <td class="text-end fw-semibold">$0.00</td>
+            <td class="text-end">$0.00</td>
+            <td><span class="text-muted">&mdash;</span></td>
+            <td class="col-items" style="display:none;">
+              <span class="text-muted" style="font-size:11px;">All $0.00</span>
+            </td>
+            <td class="col-reps" style="display:none;">
+              <span class="rep-badge" style="font-size:11px;">W.Purcell 02WP: $0.00</span>
+              <span class="rep-badge" style="font-size:11px;">N.Purcell 01NP: $0.00</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- Comparison summary                                           -->
+  <!-- ============================================================ -->
+  <div class="card border-0 shadow-sm p-4 mb-4" style="border-radius:12px;">
+    <h5 class="fw-bold mb-3" style="font-size:15px;">Comparison</h5>
+    <table class="table table-sm table-bordered" style="font-size:12.5px;">
+      <thead class="table-light">
+        <tr><th style="width:20%;">Aspect</th><th>Design A: Expandable Row</th><th>Design B: Cards</th><th>Design C: Column Toggles</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="fw-semibold">Best for</td><td>Quick scanning + drill-down</td><td>Few invoices, visual overview</td><td>Users who need table format but flexible views</td></tr>
+        <tr><td class="fw-semibold">Scroll</td><td>None (vertical only)</td><td>Vertical only</td><td>None</td></tr>
+        <tr><td class="fw-semibold">Data density</td><td>High when expanded</td><td>Medium-high (all visible)</td><td>Low core, high when toggled</td></tr>
+        <tr><td class="fw-semibold">Many rows</td><td><span class="text-success fw-bold">Best</span> - compact by default</td><td>Takes vertical space</td><td>Good</td></tr>
+        <tr><td class="fw-semibold">Familiarity</td><td>DataTable-like, closest to old PHP</td><td>Modern dashboard feel</td><td>Table with toolbar controls</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+function toggleRow(rowEl) {
+  const detailRow = rowEl.nextElementSibling;
+  const isOpen = rowEl.classList.contains('expanded');
+  // Close all first
+  document.querySelectorAll('.hist-row.expanded').forEach(r => {
+    r.classList.remove('expanded');
+    r.nextElementSibling.style.display = 'none';
+  });
+  if (!isOpen) {
+    rowEl.classList.add('expanded');
+    detailRow.style.display = '';
+  }
+}
+
+function showGroup(group, btnEl) {
+  document.querySelectorAll('.col-toggle .btn').forEach(b => b.classList.remove('active'));
+  btnEl.classList.add('active');
+  const items = document.querySelectorAll('#toggleTable .col-items');
+  const reps = document.querySelectorAll('#toggleTable .col-reps');
+  if (group === 'core') {
+    items.forEach(el => el.style.display = 'none');
+    reps.forEach(el => el.style.display = 'none');
+  } else if (group === 'items') {
+    items.forEach(el => el.style.display = '');
+    reps.forEach(el => el.style.display = 'none');
+  } else if (group === 'reps') {
+    items.forEach(el => el.style.display = 'none');
+    reps.forEach(el => el.style.display = '');
+  } else {
+    items.forEach(el => el.style.display = '');
+    reps.forEach(el => el.style.display = '');
+  }
+}
+</script>
+</body>
+</html>

@@ -14,11 +14,17 @@ import userLevelsRouter from '../server/routes/userLevels.js'
 import backupsRouter from '../server/routes/backups.js'
 import salesRepsRouter from '../server/routes/salesReps.js'
 import customersRouter from '../server/routes/customers.js'
+import customerTypesRouter from '../server/routes/customerTypes.js'
 import suppliersRouter from '../server/routes/suppliers.js'
+import customerImportExportRouter from '../server/routes/customerImportExport.js'
 import eventsRouter from '../server/routes/events.js'
 import taxRatesRouter from '../server/routes/taxRates.js'
 import costInfoRouter from '../server/routes/costInfo.js'
 import productStylesRouter from '../server/routes/productStyles.js'
+import airfeetPoRouter from '../server/routes/airfeetPo.js'
+import invoicesRouter from '../server/routes/invoices.js'
+import commissionsRouter from '../server/routes/commissions.js'
+import reportsRouter from '../server/routes/reports.js'
 
 const app = express()
 
@@ -72,7 +78,7 @@ app.use(async (req, res, next) => {
   }
 })
 
-// Routes - Vercel routes /api/* to this file, so paths here are relative (no /api prefix)
+// Routes
 app.use('/api/users', usersRouter)
 app.use('/api/privileges', privilegesRouter)
 app.use('/api/item-types', itemTypesRouter)
@@ -86,11 +92,17 @@ app.use('/api/user-levels', userLevelsRouter)
 app.use('/api/backups', backupsRouter)
 app.use('/api/sales-reps', salesRepsRouter)
 app.use('/api/customers', customersRouter)
+app.use('/api/customer-types', customerTypesRouter)
 app.use('/api/suppliers', suppliersRouter)
+app.use('/api/customer-io', customerImportExportRouter)
 app.use('/api/events', eventsRouter)
 app.use('/api/tax-rates', taxRatesRouter)
 app.use('/api/cost-info', costInfoRouter)
 app.use('/api/product-styles', productStylesRouter)
+app.use('/api/airfeet-po', airfeetPoRouter)
+app.use('/api/invoices', invoicesRouter)
+app.use('/api/commissions', commissionsRouter)
+app.use('/api/reports', reportsRouter)
 
 // Health check
 app.get('/api/health', (req, res) => {

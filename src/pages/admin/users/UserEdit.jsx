@@ -19,7 +19,12 @@ export default function UserEdit() {
     first_name: '',
     last_name: '',
     email: '',
+    username: '',
     phone: '',
+    extension: '',
+    country_code: '',
+    password: '',
+    confirmPassword: '',
     level: '',
     status: 'active',
     notes: '',
@@ -37,7 +42,12 @@ export default function UserEdit() {
         first_name: data.first_name || '',
         last_name: data.last_name || '',
         email: data.email || '',
+        username: data.username || '',
         phone: data.phone || '',
+        extension: data.extension || '',
+        country_code: data.country_code || '',
+        password: '',
+        confirmPassword: '',
         level: data.level || '',
         status: data.status || 'active',
         notes: data.notes || '',
@@ -67,18 +77,41 @@ export default function UserEdit() {
       toast.error('Please fill in all required fields')
       return
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      toast.error('Invalid email format')
+      return
+    }
+    // Password validation (only if changing)
+    if (form.password) {
+      if (form.password.length < 8) { toast.error('Password must be at least 8 characters'); return }
+      if (form.password !== form.confirmPassword) { toast.error('Passwords do not match'); return }
+    }
+    // Uniqueness checks
+    try {
+      const emailCheck = await api.checkUniqueUser('email', form.email.trim(), id)
+      if (!emailCheck.unique) { toast.error('Email already exists'); return }
+      if (form.username.trim()) {
+        const userCheck = await api.checkUniqueUser('username', form.username.trim(), id)
+        if (!userCheck.unique) { toast.error('Username already exists'); return }
+      }
+    } catch {}
 
     setSaving(true)
     try {
-      await api.updateUser(id, {
+      const payload = {
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
         email: form.email.trim(),
+        username: form.username.trim() || '',
         phone: form.phone.trim() || null,
+        extension: form.extension.trim() || '',
+        country_code: form.country_code.trim() || '',
         level: form.level,
         status: form.status,
         notes: form.notes.trim() || null,
-      })
+      }
+      if (form.password) payload.password = form.password
+      await api.updateUser(id, payload)
       toast.success(`User "${form.first_name} ${form.last_name}" updated!`)
       navigate('/admin/users')
     } catch (err) {
@@ -171,18 +204,36 @@ export default function UserEdit() {
                   </div>
                 </div>
                 <div className="col-md-6">
+                  <label className="form-label">Username</label>
+                  <div className="input-group">
+                    <span className="input-group-text"><i className="bi bi-person-badge"></i></span>
+                    <input type="text" className="form-control" name="username" value={form.username} onChange={handleChange} placeholder="Enter username" />
+                  </div>
+                </div>
+                <div className="col-md-6">
                   <label className="form-label">Phone Number</label>
                   <div className="input-group">
                     <span className="input-group-text"><i className="bi bi-telephone"></i></span>
-                    <input
-                      type="tel"
-                      className="form-control"
-                      name="phone"
-                      value={form.phone}
-                      onChange={handleChange}
-                      placeholder="(555) 123-4567"
-                    />
+                    <input type="text" className="form-control" name="country_code" value={form.country_code} onChange={handleChange} placeholder="+1" style={{ maxWidth: 60 }} />
+                    <input type="tel" className="form-control" name="phone" value={form.phone} onChange={handleChange} placeholder="(555) 123-4567" />
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Change Password (optional) */}
+            <div className="form-section p-4 mb-4">
+              <div className="section-title">
+                <i className="bi bi-key me-2"></i>Change Password <span className="text-muted small fw-normal">(leave blank to keep current)</span>
+              </div>
+              <div className="row g-3">
+                <div className="col-md-6">
+                  <label className="form-label">New Password</label>
+                  <input type="password" className="form-control" name="password" value={form.password} onChange={handleChange} placeholder="Enter new password" autoComplete="new-password" />
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label">Confirm Password</label>
+                  <input type="password" className="form-control" name="confirmPassword" value={form.confirmPassword} onChange={handleChange} placeholder="Confirm new password" autoComplete="new-password" />
                 </div>
               </div>
             </div>

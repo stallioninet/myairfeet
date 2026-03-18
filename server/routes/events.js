@@ -199,8 +199,14 @@ router.get('/', async (req, res) => {
     const filter = status ? { status } : {}
     const events = await col('events').find(filter).sort({ created_at: -1 }).toArray()
 
-    // Use old_event_id for sub-collection lookups (migrated MySQL IDs)
-    const eventIds = events.map(e => e.old_event_id).filter(Boolean)
+    // Use event_id (numeric) for sub-collection lookups
+    const eventIds = events.map(e => e.event_id || e.legacy_id).filter(Boolean)
+
+    // Resolve tax state names for location column
+    const taxIds = [...new Set(events.map(e => e.salesTax_state_id).filter(Boolean))]
+    const taxes = taxIds.length > 0 ? await col('tax_rates').find({ sales_tax_id: { $in: taxIds } }).toArray() : []
+    const taxMap = {}
+    taxes.forEach(t => { taxMap[t.sales_tax_id] = t.sales_tax_item_name || '' })
 
     // Fetch receipt totals grouped by event_id
     const receipts = await col('event_day_receipt_info').aggregate([
@@ -246,7 +252,7 @@ router.get('/', async (req, res) => {
 
     // Attach computed fields to each event
     const enriched = events.map(e => {
-      const eid = e.old_event_id || ''
+      const eid = e.event_id || e.legacy_id || ''
       const r = receiptMap[eid] || { totalCash: 0, totalCredit: 0, totalChecks: 0, days: 0 }
       const c = costMap[eid] || { totalCost: 0, costEntries: 0 }
       const it = itemMap[eid] || { itemCount: 0, totalQty: 0 }
@@ -255,6 +261,13 @@ router.get('/', async (req, res) => {
       const profit = totalRevenue - c.totalCost - b.totalCommission
       return {
         ...e,
+        // Map old MySQL fields to what frontend expects
+        name: e.event_name || e.name || '',
+        event_number: e.event_cust_code || e.event_number || '',
+        start_date: e.event_start || e.start_date || '',
+        end_date: e.event_end || e.end_date || '',
+        location: taxMap[e.salesTax_state_id] || e.location || '',
+        old_event_id: e.event_id || e.legacy_id || '',
         totalRevenue,
         totalCost: c.totalCost,
         itemCount: it.itemCount,
@@ -272,6 +285,19 @@ router.get('/', async (req, res) => {
   }
 })
 
+// GET /check-unique - validate event name/number
+router.get('/check-unique', async (req, res) => {
+  try {
+    const { field, value, exclude_id } = req.query
+    if (!field || !value) return res.json({ unique: true })
+    if (!['event_number', 'name'].includes(field)) return res.status(400).json({ error: 'Invalid field' })
+    const filter = { [field]: { $regex: new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }
+    if (exclude_id) filter._id = { $ne: toObjectId(exclude_id) }
+    const existing = await col('events').findOne(filter)
+    res.json({ unique: !existing })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
 // GET /:id - single event with items, costs, receipts
 router.get('/:id', async (req, res) => {
   try {
@@ -281,15 +307,71 @@ router.get('/:id', async (req, res) => {
     const event = await col('events').findOne({ _id: oid })
     if (!event) return res.status(404).json({ error: 'Event not found' })
 
-    const eid = event.old_event_id || event._id.toString()
+    const eid = event.event_id || event.legacy_id
+    const eidQuery = { $in: [eid, String(eid), parseInt(eid)] }
 
     const [items, costs, receipts] = await Promise.all([
-      col('event_items').find({ event_id: eid }).toArray(),
-      col('event_item_cost').find({ event_id: eid }).toArray(),
-      col('event_day_receipt_info').find({ event_id: eid }).toArray()
+      col('event_items').find({ event_id: eidQuery }).toArray(),
+      col('event_item_cost').find({ event_id: eidQuery }).toArray(),
+      col('event_day_receipt_info').find({ event_id: eidQuery }).toArray()
     ])
 
-    res.json({ ...event, items, costs, receipts })
+    // Resolve sales tax state name
+    let salesTax_state_name = ''
+    if (event.salesTax_state_id) {
+      const tax = await col('tax_rates').findOne({ $or: [{ sales_tax_id: event.salesTax_state_id }, { legacy_id: event.salesTax_state_id }] })
+      salesTax_state_name = tax?.sales_tax_item_name || tax?.name || ''
+    }
+
+    // Resolve product names for items
+    const productIds = [...new Set(items.map(i => i.product_id).filter(Boolean))]
+    const products = productIds.length > 0 ? await col('product_items_master').find({ legacy_id: { $in: productIds } }).toArray() : []
+    const prodMap = {}
+    products.forEach(p => { prodMap[p.legacy_id] = p.item_name || '' })
+
+    // Resolve size names
+    const sizeIds = [...new Set(items.map(i => parseInt(i.size_name)).filter(Boolean))]
+    const sizes = sizeIds.length > 0 ? await col('item_sizes').find({ id_item_size: { $in: sizeIds } }).toArray() : []
+    const sizeMap = {}
+    sizes.forEach(s => { sizeMap[s.id_item_size] = s.size_name || '' })
+
+    const resolvedItems = items.map(i => ({
+      ...i,
+      product_name: prodMap[i.product_id] || '',
+      size_resolved: sizeMap[parseInt(i.size_name)] || i.size_name || '',
+    }))
+
+    // Resolve cost item names
+    const costItemIds = [...new Set(costs.map(c => c.item_name).filter(Boolean))]
+    const costInfos = costItemIds.length > 0 ? await col('cost_infos').find({ cost_id: { $in: costItemIds.map(Number) } }).toArray() : []
+    const costMap = {}
+    costInfos.forEach(c => { costMap[c.cost_id] = c.items || c.description || '' })
+
+    const resolvedCosts = costs.map(c => ({
+      ...c,
+      item_name_resolved: costMap[c.item_name] || `Cost #${c.item_name}`,
+    }))
+
+    // Resolve receipt fields
+    const resolvedReceipts = receipts.map(r => ({
+      ...r,
+      cash: parseFloat(r.cash_amount || r.cash) || 0,
+      credit: parseFloat(r.credit_amount || r.credit) || 0,
+      checks: parseFloat(r.check_amount || r.checks) || 0,
+      hours: r.hours || r.receipt_hours || '',
+      receipt_date: r.receipt_date || r.day_date || '',
+    }))
+
+    res.json({
+      ...event,
+      name: event.event_name || event.name || '',
+      event_number: event.event_cust_code || event.event_number || '',
+      start_date: event.event_start || event.start_date || '',
+      end_date: event.event_end || event.end_date || '',
+      old_event_id: event.event_id || event.legacy_id || '',
+      notes: event.event_notes || event.notes || '',
+      items: resolvedItems, costs: resolvedCosts, receipts: resolvedReceipts, salesTax_state_name
+    })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -353,7 +435,7 @@ router.get('/:id/items', async (req, res) => {
     const event = await col('events').findOne({ _id: oid })
     if (!event) return res.status(404).json({ error: 'Event not found' })
 
-    const items = await col('event_items').find({ event_id: event.old_event_id || event._id.toString() }).toArray()
+    const items = await col('event_items').find({ event_id: event.event_id || event.legacy_id || event._id.toString() }).toArray()
     res.json(items)
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -371,7 +453,7 @@ router.post('/:id/items', async (req, res) => {
 
     const doc = {
       ...req.body,
-      event_id: event.old_event_id || event._id.toString(),
+      event_id: event.event_id || event.legacy_id || event._id.toString(),
       created_on: new Date(),
       modified_on: new Date(),
       status: req.body.status || 'active'
@@ -409,7 +491,7 @@ router.get('/:id/receipts', async (req, res) => {
     const event = await col('events').findOne({ _id: oid })
     if (!event) return res.status(404).json({ error: 'Event not found' })
 
-    const receipts = await col('event_day_receipt_info').find({ event_id: event.old_event_id || event._id.toString() }).toArray()
+    const receipts = await col('event_day_receipt_info').find({ event_id: event.event_id || event.legacy_id || event._id.toString() }).toArray()
     res.json(receipts)
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -427,7 +509,7 @@ router.post('/:id/receipts', async (req, res) => {
 
     const doc = {
       ...req.body,
-      event_id: event.old_event_id || event._id.toString(),
+      event_id: event.event_id || event.legacy_id || event._id.toString(),
       created_on: new Date(),
       modified_on: new Date(),
       status: req.body.status || 'active'
@@ -437,6 +519,157 @@ router.post('/:id/receipts', async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message })
   }
+})
+
+// ============================================================
+// ADVISORS (assign sales reps/advisors to events)
+// ============================================================
+
+// GET advisors for an event
+router.get('/:id/advisors', async (req, res) => {
+  try {
+    // Get event to find numeric event_id
+    const oid = toObjectId(req.params.id)
+    const event = oid ? await col('events').findOne({ _id: oid }) : null
+    const numericId = event?.event_id || event?.legacy_id
+
+    // Search both old (event_advisor_map) and new (event_advisors) collections
+    let advisors = []
+    if (numericId) {
+      advisors = await col('event_advisor_map').find({ event_id: numericId }).toArray()
+    }
+    if (advisors.length === 0) {
+      advisors = await col('event_advisors').find({ event_id: req.params.id }).toArray()
+    }
+
+    // Get rep names - advisor_id is numeric (legacy user ID)
+    const repIds = advisors.map(a => a.advisor_id).filter(Boolean)
+    const reps = repIds.length > 0 ? await col('app_user').find({ legacy_id: { $in: repIds } }).toArray() : []
+    const repMap = {}
+    reps.forEach(r => { repMap[r.legacy_id] = r })
+
+    const result = advisors.map(a => ({
+      ...a,
+      advisor_name: repMap[a.advisor_id] ? `${repMap[a.advisor_id].first_name || ''} ${repMap[a.advisor_id].last_name || ''}`.trim() : `Advisor #${a.advisor_id}`,
+      advisor_email: repMap[a.advisor_id]?.email_address || repMap[a.advisor_id]?.email || '',
+    }))
+    res.json(result)
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// POST add advisor to event
+router.post('/:id/advisors', async (req, res) => {
+  try {
+    const doc = {
+      event_id: req.params.id,
+      advisor_id: req.body.advisor_id,
+      role: req.body.role || 'advisor',
+      created_at: new Date(),
+    }
+    const result = await col('event_advisors').insertOne(doc)
+    res.status(201).json({ _id: result.insertedId, ...doc })
+  } catch (err) { res.status(400).json({ error: err.message }) }
+})
+
+// DELETE remove advisor from event
+router.delete('/:id/advisors/:advisorMapId', async (req, res) => {
+  try {
+    await col('event_advisors').deleteOne({ _id: toObjectId(req.params.advisorMapId) })
+    res.json({ success: true })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// ============================================================
+// ADVISOR BONUS PAYMENTS
+// ============================================================
+
+// GET bonuses for an event
+router.get('/:id/bonuses', async (req, res) => {
+  try {
+    const oid = toObjectId(req.params.id)
+    const event = oid ? await col('events').findOne({ _id: oid }) : null
+    const numericId = event?.event_id || event?.legacy_id
+    let bonuses = []
+    if (numericId) {
+      bonuses = await col('advisor_bonus_info').find({ event_id: numericId }).toArray()
+    }
+    if (bonuses.length === 0) {
+      bonuses = await col('advisor_bonus_info').find({ event_id: req.params.id }).toArray()
+    }
+    res.json(bonuses)
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// POST save/update bonus for advisor
+router.post('/:id/bonuses', async (req, res) => {
+  try {
+    const { advisor_id, mul5_bonus, mul10_bonus, hourly_pay, hours_worked, dollar_payment, paid_date, status } = req.body
+    const totalBonus = (parseFloat(mul5_bonus) || 0) + (parseFloat(mul10_bonus) || 0) +
+      ((parseFloat(hourly_pay) || 0) * (parseFloat(hours_worked) || 0)) + (parseFloat(dollar_payment) || 0)
+
+    const existing = await col('advisor_bonus_info').findOne({ event_id: req.params.id, advisor_id })
+    const doc = {
+      event_id: req.params.id,
+      advisor_id,
+      mul5_bonus: parseFloat(mul5_bonus) || 0,
+      mul10_bonus: parseFloat(mul10_bonus) || 0,
+      hourly_pay: parseFloat(hourly_pay) || 0,
+      hours_worked: parseFloat(hours_worked) || 0,
+      dollar_payment: parseFloat(dollar_payment) || 0,
+      total_bonus: totalBonus,
+      paid_date: paid_date || null,
+      status: status || (totalBonus > 0 ? 'calculated' : 'pending'),
+      updated_at: new Date(),
+    }
+
+    if (existing) {
+      await col('advisor_bonus_info').updateOne({ _id: existing._id }, { $set: doc })
+      res.json({ ...existing, ...doc })
+    } else {
+      doc.created_at = new Date()
+      const result = await col('advisor_bonus_info').insertOne(doc)
+      res.status(201).json({ _id: result.insertedId, ...doc })
+    }
+  } catch (err) { res.status(400).json({ error: err.message }) }
+})
+
+// PUT mark bonus as paid
+router.put('/bonuses/:bonusId/paid', async (req, res) => {
+  try {
+    const result = await col('advisor_bonus_info').findOneAndUpdate(
+      { _id: toObjectId(req.params.bonusId) },
+      { $set: { status: 'paid', paid_date: req.body.paid_date || new Date().toISOString().slice(0, 10), updated_at: new Date() } },
+      { returnDocument: 'after' }
+    )
+    res.json(result)
+  } catch (err) { res.status(400).json({ error: err.message }) }
+})
+
+// ============================================================
+// DAILY RECEIPTS (enhanced with calculation fields)
+// ============================================================
+
+// PUT update receipt with daily calculations
+router.put('/receipts/:receiptId', async (req, res) => {
+  try {
+    const { cash, credit, checks, hours, notes } = req.body
+    const total_receipt = (parseFloat(cash) || 0) + (parseFloat(credit) || 0) + (parseFloat(checks) || 0)
+    const update = {
+      cash: parseFloat(cash) || 0,
+      credit: parseFloat(credit) || 0,
+      checks: parseFloat(checks) || 0,
+      hours: parseFloat(hours) || 0,
+      total_receipt,
+      notes: notes || '',
+      updated_at: new Date(),
+    }
+    const result = await col('event_day_receipt_info').findOneAndUpdate(
+      { _id: toObjectId(req.params.receiptId) },
+      { $set: update },
+      { returnDocument: 'after' }
+    )
+    res.json(result)
+  } catch (err) { res.status(400).json({ error: err.message }) }
 })
 
 export default router

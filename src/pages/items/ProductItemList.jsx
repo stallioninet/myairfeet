@@ -146,6 +146,15 @@ export default function ProductItemList() {
   async function handleSave() {
     if (!form.name.trim()) { toast.error('Product name is required'); return }
     if (!form.item_type) { toast.error('Item type is required'); return }
+    // Uniqueness checks
+    try {
+      const nameCheck = await api.checkUniqueProduct('name', form.name.trim(), editingId)
+      if (!nameCheck.unique) { toast.error(`Product "${form.name}" already exists`); return }
+      if (form.sku?.trim()) {
+        const skuCheck = await api.checkUniqueProduct('sku', form.sku.trim(), editingId)
+        if (!skuCheck.unique) { toast.error(`SKU "${form.sku}" already exists`); return }
+      }
+    } catch {}
     setSaving(true)
     try {
       const payload = { ...form, unit_price: parseFloat(form.unit_price) || 0, base_price: parseFloat(form.base_price) || 0 }
