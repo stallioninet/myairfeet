@@ -640,9 +640,9 @@ export default function Reports() {
   }
 
   return (
-    <div style={{ maxWidth: 'calc(100vw - 260px)', overflowX: 'hidden' }}>
+    <div style={{ width: '100%', overflowX: 'hidden' }}>
       {/* Header */}
-      <div className="d-flex justify-content-between align-items-center mb-3">
+      <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap">
         <div>
           <nav aria-label="breadcrumb">
             <ol className="breadcrumb mb-0" style={{ fontSize: 13 }}>
@@ -685,15 +685,15 @@ export default function Reports() {
             ))}
           </div>
           {/* Filters row */}
-          <div className="d-flex flex-wrap gap-2 align-items-center">
-            <div className="position-relative" style={{ minWidth: 180 }}>
+          <div className="d-flex flex-wrap gap-2 align-items-center" style={{ fontSize: 12 }}>
+            <div className="position-relative" style={{ minWidth: 140, flex: '1 1 140px', maxWidth: 200 }}>
               <i className="bi bi-search position-absolute" style={{ left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: 12 }}></i>
               <input type="text" className="form-control form-control-sm ps-4" style={{ fontSize: 12 }} placeholder="Search..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
             </div>
             {/* Customer filter - for year, month, rep tabs */}
             {(tab === 'year' || tab === 'month' || tab === 'rep-month' || tab === 'rep-year') && (
               <div>
-                <select className="form-select form-select-sm" style={{ fontSize: 12, minWidth: 140 }} value={filterCustomer} onChange={e => { setFilterCustomer(e.target.value); setPage(1) }}>
+                <select className="form-select form-select-sm" style={{ fontSize: 12, minWidth: 100 }} value={filterCustomer} onChange={e => { setFilterCustomer(e.target.value); setPage(1) }}>
                   <option value="">All Customers</option>
                   {customers.map(c => <option key={c._id} value={c.legacy_id}>{c.company_name}</option>)}
                 </select>
@@ -702,7 +702,7 @@ export default function Reports() {
             {/* Industry filter - year tab */}
             {tab === 'year' && (
               <div>
-                <select className="form-select form-select-sm" style={{ fontSize: 12, minWidth: 120 }} value={filterIndustry} onChange={e => { setFilterIndustry(e.target.value); setPage(1) }}>
+                <select className="form-select form-select-sm" style={{ fontSize: 12, minWidth: 100 }} value={filterIndustry} onChange={e => { setFilterIndustry(e.target.value); setPage(1) }}>
                   <option value="">All Industries</option>
                   {customerTypes.map(t => <option key={t._id} value={t.name || t.type_name}>{t.name || t.type_name}</option>)}
                 </select>
@@ -711,7 +711,7 @@ export default function Reports() {
             {/* Sales range filter - year tab */}
             {tab === 'year' && (
               <div>
-                <select className="form-select form-select-sm" style={{ fontSize: 12, minWidth: 110 }} value={salesRange} onChange={e => { setSalesRange(e.target.value); setPage(1) }}>
+                <select className="form-select form-select-sm" style={{ fontSize: 12, minWidth: 100 }} value={salesRange} onChange={e => { setSalesRange(e.target.value); setPage(1) }}>
                   <option value="all">Sales ($k) - All</option>
                   <option value="1">0 - 1k</option>
                   <option value="2">1k - 5k</option>
@@ -737,7 +737,7 @@ export default function Reports() {
                 </select>
               </div>
               <div>
-                <select className="form-select form-select-sm" multiple style={{ height: 32, minWidth: 140, fontSize: 12 }}
+                <select className="form-select form-select-sm" multiple style={{ height: 32, minWidth: 100, fontSize: 12 }}
                   value={selectedYears.map(String)}
                   onChange={e => setSelectedYears([...e.target.selectedOptions].map(o => parseInt(o.value)))}
                   title="Hold Ctrl/Shift to select multiple years">
@@ -792,11 +792,11 @@ export default function Reports() {
             )}
             {/* Order By - rep-month, rep-year */}
             {(tab === 'rep-month' || tab === 'rep-year') && (
-              <div className="col-md-auto d-flex align-items-center gap-2" style={{ fontSize: 12 }}>
+              <div className="d-flex align-items-center gap-1 flex-wrap" style={{ fontSize: 11 }}>
                 <span className="fw-semibold text-nowrap">Order:</span>
-                <div className="form-check form-check-inline mb-0"><input className="form-check-input" type="radio" name="orderBy" value="" checked={filterOrderBy === ''} onChange={() => setFilterOrderBy('')} /><label className="form-check-label">Default</label></div>
-                <div className="form-check form-check-inline mb-0"><input className="form-check-input" type="radio" name="orderBy" value="company" checked={filterOrderBy === 'company'} onChange={() => setFilterOrderBy('company')} /><label className="form-check-label">Customer</label></div>
-                <div className="form-check form-check-inline mb-0"><input className="form-check-input" type="radio" name="orderBy" value="rep" checked={filterOrderBy === 'rep'} onChange={() => setFilterOrderBy('rep')} /><label className="form-check-label">Rep</label></div>
+                <div className="form-check form-check-inline mb-0"><input className="form-check-input" type="radio" name="orderBy" value="" checked={filterOrderBy === ''} onChange={() => setFilterOrderBy('')} style={{ width: 14, height: 14 }} /><label className="form-check-label">Default</label></div>
+                <div className="form-check form-check-inline mb-0"><input className="form-check-input" type="radio" name="orderBy" value="company" checked={filterOrderBy === 'company'} onChange={() => setFilterOrderBy('company')} style={{ width: 14, height: 14 }} /><label className="form-check-label">Customer</label></div>
+                <div className="form-check form-check-inline mb-0"><input className="form-check-input" type="radio" name="orderBy" value="rep" checked={filterOrderBy === 'rep'} onChange={() => setFilterOrderBy('rep')} style={{ width: 14, height: 14 }} /><label className="form-check-label">Rep</label></div>
               </div>
             )}
             {/* Status - rep-month, rep-year */}
@@ -846,10 +846,10 @@ export default function Reports() {
 
       {/* Table */}
       <div className="card border-0 shadow-sm rounded-4" style={{ overflow: 'hidden' }}>
-        <div className="card-header py-3 border-0" style={{ background: gradients[tab], color: '#fff' }}>
-          <div className="d-flex justify-content-between align-items-center">
-            <h5 className="mb-0"><i className={`bi ${TABS.find(t => t.key === tab)?.icon} me-2`}></i>{TABS.find(t => t.key === tab)?.label} Report</h5>
-            <span className="badge bg-white bg-opacity-25 px-3 py-2">{filtered.length} records</span>
+        <div className="card-header py-2 py-md-3 border-0" style={{ background: gradients[tab], color: '#fff' }}>
+          <div className="d-flex justify-content-between align-items-center flex-wrap gap-1">
+            <h6 className="mb-0 fw-bold"><i className={`bi ${TABS.find(t => t.key === tab)?.icon} me-1`}></i>{TABS.find(t => t.key === tab)?.label} Report</h6>
+            <span className="badge bg-white bg-opacity-25 px-2 py-1" style={{ fontSize: 11 }}>{filtered.length} records</span>
           </div>
         </div>
         <div style={{ overflowX: 'auto' }} id="report-table-area">
@@ -860,7 +860,7 @@ export default function Reports() {
           ) : renderTable()}
         </div>
         {filtered.length > 0 && (
-          <div className="card-footer bg-white border-0 py-3">
+          <div className="card-footer bg-white border-0 py-2" style={{ overflowX: 'auto' }}>
             <Pagination total={filtered.length} page={page} perPage={perPage}
               onPageChange={setPage} onPerPageChange={v => { setPerPage(v); setPage(1) }} />
           </div>
