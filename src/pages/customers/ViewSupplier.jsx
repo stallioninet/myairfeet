@@ -441,7 +441,7 @@ export default function ViewSupplier() {
   }
 
   return (
-    <div style={{ overflow: 'hidden' }}>
+    <div style={{ width: '100%', overflowX: 'hidden' }}>
       {/* Breadcrumb */}
       <div className="d-flex justify-content-between align-items-center mb-3">
         <nav aria-label="breadcrumb">

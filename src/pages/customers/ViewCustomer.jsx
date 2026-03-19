@@ -564,48 +564,46 @@ export default function ViewCustomer() {
   }
 
   return (
-    <div style={{ overflowX: 'hidden', maxWidth: 'calc(100vw - 260px)' }}>
+    <div style={{ width: '100%', overflowX: 'hidden' }}>
       {/* Breadcrumb */}
-      <div className="d-flex justify-content-between align-items-center mb-3">
+      <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
         <nav aria-label="breadcrumb">
-          <ol className="breadcrumb mb-0">
-            <li className="breadcrumb-item"><Link to="/dashboard"><i className="bi bi-house-door me-1"></i>Dashboard</Link></li>
+          <ol className="breadcrumb mb-0" style={{ fontSize: 'clamp(.7rem, 1.5vw, .85rem)' }}>
+            <li className="breadcrumb-item"><Link to="/dashboard"><i className="bi bi-house-door"></i></Link></li>
             <li className="breadcrumb-item"><Link to="/customers/active">Customers</Link></li>
-            <li className="breadcrumb-item active">{cust.company_name}</li>
+            <li className="breadcrumb-item active text-truncate" style={{ maxWidth: 150 }}>{cust.company_name}</li>
           </ol>
         </nav>
-        <div className="d-flex gap-2">
-          <button className="btn btn-sm btn-outline-danger rounded-pill" onClick={async () => {
+        <div className="d-flex gap-1 flex-wrap">
+          <button className="btn btn-sm btn-outline-danger rounded-pill" style={{ fontSize: 'clamp(.65rem, 1.2vw, .78rem)', padding: '4px 10px' }} onClick={async () => {
             try {
               const result = await api.sendOverdueEmail(id)
               toast.success(result.message || 'Overdue email sent')
             } catch (err) { toast.error(err.message) }
-          }}><i className="bi bi-envelope-exclamation me-1"></i>Send Overdue Email</button>
-          <button className="btn btn-sm btn-outline-primary rounded-pill" onClick={() => window.print()}><i className="bi bi-printer me-1"></i>Print</button>
-          <Link to="/customers/active" className="btn btn-sm btn-outline-secondary rounded-pill"><i className="bi bi-arrow-left me-1"></i>Back to List</Link>
+          }}><i className="bi bi-envelope-exclamation me-1"></i><span className="d-none d-md-inline">Send Overdue</span><span className="d-md-none">Email</span></button>
+          <Link to="/customers/active" className="btn btn-sm btn-outline-secondary rounded-pill" style={{ fontSize: 'clamp(.65rem, 1.2vw, .78rem)', padding: '4px 10px' }}><i className="bi bi-arrow-left me-1"></i>Back</Link>
         </div>
       </div>
 
       {/* Customer Header Bar */}
-      <div className="card border-0 shadow-sm mb-3" style={{ borderRadius: 16, overflow: 'hidden', position: 'relative' }}>
+      <div className="card border-0 shadow-sm mb-2" style={{ borderRadius: 'clamp(10px, 2vw, 16px)', overflow: 'hidden', position: 'relative' }}>
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg, #2563eb, #7c3aed, #2563eb)' }}></div>
-        <div className="card-body d-flex align-items-center gap-3 flex-wrap py-3 px-4">
-          <div className="d-flex align-items-center justify-content-center fw-bold text-white" style={{ width: 64, height: 64, borderRadius: 16, background: `linear-gradient(135deg, ${color}, #7c3aed)`, fontSize: '1.4rem', boxShadow: '0 4px 12px rgba(37,99,235,.25)', flexShrink: 0 }}>
+        <div className="card-body d-flex align-items-center gap-2 gap-md-3 flex-wrap py-2 py-md-3 px-3 px-md-4">
+          <div className="d-flex align-items-center justify-content-center fw-bold text-white" style={{ width: 'clamp(40px, 8vw, 64px)', height: 'clamp(40px, 8vw, 64px)', borderRadius: 'clamp(10px, 2vw, 16px)', background: `linear-gradient(135deg, ${color}, #7c3aed)`, fontSize: 'clamp(1rem, 2vw, 1.4rem)', boxShadow: '0 4px 12px rgba(37,99,235,.25)', flexShrink: 0 }}>
             {getInitials(cust.company_name)}
           </div>
-          <div className="flex-grow-1">
-            <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>{cust.company_name}</div>
-            <div className="text-muted" style={{ fontSize: '.82rem', fontWeight: 600 }}>Cust #: {cust.customer_code || '—'} &nbsp;|&nbsp; Type: {cust.customer_type || '—'}</div>
-            <div className="d-flex gap-3 mt-1 flex-wrap">
-              {cust.phone && <span className="d-flex align-items-center gap-1 text-muted" style={{ fontSize: '.78rem', fontWeight: 500 }}><i className="bi bi-telephone text-primary" style={{ fontSize: '.85rem' }}></i>{cust.phone}</span>}
-              {cust.website && <span className="d-flex align-items-center gap-1 text-muted" style={{ fontSize: '.78rem', fontWeight: 500 }}><i className="bi bi-globe text-primary" style={{ fontSize: '.85rem' }}></i>{cust.website}</span>}
-              {cust.created_at && <span className="d-flex align-items-center gap-1 text-muted" style={{ fontSize: '.78rem', fontWeight: 500 }}><i className="bi bi-calendar-check text-primary" style={{ fontSize: '.85rem' }}></i>Since {new Date(cust.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>}
-              {assignedReps.length > 0 && <span className="d-flex align-items-center gap-1 text-muted" style={{ fontSize: '.78rem', fontWeight: 500 }}><i className="bi bi-people text-primary" style={{ fontSize: '.85rem' }}></i>{assignedReps.length} Reps Assigned</span>}
+          <div className="flex-grow-1" style={{ minWidth: 0 }}>
+            <div className="text-truncate" style={{ fontSize: 'clamp(.95rem, 2vw, 1.25rem)', fontWeight: 800 }}>{cust.company_name}</div>
+            <div className="text-muted text-truncate" style={{ fontSize: 'clamp(.7rem, 1.3vw, .82rem)', fontWeight: 600 }}>Cust #: {cust.customer_code || '—'} | Type: {cust.customer_type || '—'}</div>
+            <div className="d-flex gap-2 gap-md-3 mt-1 flex-wrap">
+              {cust.phone && <span className="d-flex align-items-center gap-1 text-muted" style={{ fontSize: 'clamp(.65rem, 1.2vw, .78rem)', fontWeight: 500 }}><i className="bi bi-telephone text-primary"></i>{cust.phone}</span>}
+              {cust.created_at && <span className="d-flex align-items-center gap-1 text-muted" style={{ fontSize: 'clamp(.65rem, 1.2vw, .78rem)', fontWeight: 500 }}><i className="bi bi-calendar-check text-primary"></i>Since {new Date(cust.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>}
+              {assignedReps.length > 0 && <span className="d-flex align-items-center gap-1 text-muted" style={{ fontSize: 'clamp(.65rem, 1.2vw, .78rem)', fontWeight: 500 }}><i className="bi bi-people text-primary"></i>{assignedReps.length} Reps</span>}
             </div>
           </div>
-          <div className="d-flex align-items-center gap-2">
+          <div className="d-flex align-items-center gap-1 gap-md-2 flex-wrap">
             {['pilot', 'active', 'inactive'].map(s => (
-              <label key={s} className="d-flex align-items-center gap-1 px-3 py-1 border rounded-pill" style={{ fontSize: '.8rem', fontWeight: 600, cursor: 'pointer', background: (pendingStatus || cust.status) === s ? '#eff6ff' : '#fff', borderColor: (pendingStatus || cust.status) === s ? '#2563eb' : '#e2e8f0' }}>
+              <label key={s} className="d-flex align-items-center gap-1 px-2 px-md-3 py-1 border rounded-pill" style={{ fontSize: 'clamp(.65rem, 1.2vw, .8rem)', fontWeight: 600, cursor: 'pointer', background: (pendingStatus || cust.status) === s ? '#eff6ff' : '#fff', borderColor: (pendingStatus || cust.status) === s ? '#2563eb' : '#e2e8f0' }}>
                 <input type="radio" name="custStatus" value={s} checked={(pendingStatus || cust.status) === s} onChange={() => setPendingStatus(s)} style={{ accentColor: '#2563eb', width: 14, height: 14 }} />
                 <span style={{ color: (pendingStatus || cust.status) === s ? '#2563eb' : undefined }}>{s.charAt(0).toUpperCase() + s.slice(1)}</span>
               </label>
@@ -625,21 +623,21 @@ export default function ViewCustomer() {
       </div>
 
       {/* Summary Stats */}
-      <div className="row g-3 mb-3">
+      <div className="row g-2 g-md-3 mb-2">
         {[
           { value: '0', label: 'Total Invoices', icon: 'bi-receipt', bg: '#eff6ff', color: '#2563eb' },
-          { value: '$0.00', label: 'Total Revenue', icon: 'bi-cash-stack', bg: '#ecfdf5', color: '#10b981' },
+          { value: '$0.00', label: 'Revenue', icon: 'bi-cash-stack', bg: '#ecfdf5', color: '#10b981' },
           { value: '$0.00', label: 'Outstanding', icon: 'bi-exclamation-triangle', bg: '#fef2f2', color: '#ef4444' },
-          { value: '$0.00', label: 'Commissions Due', icon: 'bi-percent', bg: '#fffbeb', color: '#d97706' },
-          { value: '$0.00', label: 'Total Payments', icon: 'bi-credit-card', bg: '#f5f3ff', color: '#7c3aed' },
+          { value: '$0.00', label: 'Commissions', icon: 'bi-percent', bg: '#fffbeb', color: '#d97706' },
+          { value: '$0.00', label: 'Payments', icon: 'bi-credit-card', bg: '#f5f3ff', color: '#7c3aed' },
         ].map((stat, i) => (
-          <div className="col" key={i}>
+          <div className="col-6 col-md" key={i}>
             <div className="stat-card">
-              <div className="d-flex align-items-center gap-3">
+              <div className="d-flex align-items-center gap-2">
                 <div className="stat-icon" style={{ background: stat.bg, color: stat.color }}><i className={`bi ${stat.icon}`}></i></div>
-                <div>
-                  <div className="stat-value" style={{ color: stat.color }}>{stat.value}</div>
-                  <div className="stat-label">{stat.label}</div>
+                <div style={{ minWidth: 0 }}>
+                  <div className="stat-value text-truncate" style={{ color: stat.color }}>{stat.value}</div>
+                  <div className="stat-label text-truncate">{stat.label}</div>
                 </div>
               </div>
             </div>
@@ -648,22 +646,24 @@ export default function ViewCustomer() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="d-flex gap-2 mb-3 flex-wrap">
+      <div className="d-flex gap-1 gap-md-2 mb-2 flex-nowrap" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         {tabs.map(tab => {
           const isActive = activeTab === tab.key
           return (
             <button
               key={tab.key}
-              className="btn btn-sm px-3 py-2 d-flex align-items-center gap-2"
+              className="btn btn-sm px-2 px-md-3 py-1 py-md-2 d-flex align-items-center gap-1 gap-md-2"
               style={{
                 borderRadius: 10,
                 border: isActive ? 'none' : '1px solid #e2e8f0',
                 background: isActive ? 'linear-gradient(135deg, #2563eb, #1e40af)' : '#fff',
                 color: isActive ? '#fff' : '#64748b',
                 fontWeight: 600,
-                fontSize: '0.85rem',
+                fontSize: 'clamp(.72rem, 1.3vw, .85rem)',
                 boxShadow: isActive ? '0 2px 8px rgba(37,99,235,0.3)' : '0 1px 3px rgba(0,0,0,0.04)',
                 transition: 'all 0.2s',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
               }}
               onClick={() => setActiveTab(tab.key)}
             >
@@ -675,8 +675,8 @@ export default function ViewCustomer() {
       </div>
 
       {/* Tab Content */}
-      <div className="card border-0 shadow-sm" style={{ borderRadius: 14, overflow: 'hidden' }}>
-        <div className="card-body p-4" style={{ overflowX: 'hidden' }}>
+      <div className="card border-0 shadow-sm" style={{ borderRadius: 'clamp(10px, 2vw, 14px)', overflow: 'hidden' }}>
+        <div className="card-body p-2 p-md-4" style={{ overflowX: 'hidden' }}>
 
           {/* ===== DETAILS TAB ===== */}
           {activeTab === 'details' && (() => {
@@ -714,15 +714,15 @@ export default function ViewCustomer() {
             return (<>
             <div>
               {/* Action Bar */}
-              <div className="d-flex gap-2 flex-wrap mb-4">
+              <div className="d-flex gap-1 gap-md-2 flex-wrap mb-3">
                 {[
-                  { icon: 'bi-person-plus-fill', label: 'Add New Contact', bg: '#22c55e', onClick: openAddContact },
-                  { icon: 'bi-envelope-plus-fill', label: 'Add Emails', bg: '#22c55e', onClick: openAddEmails },
-                  { icon: 'bi-receipt', label: 'Add New Invoice', bg: '#3b82f6', onClick: () => {} },
-                  { icon: 'bi-geo-alt-fill', label: 'Add New Address', bg: '#22c55e', onClick: openAddAddress },
+                  { icon: 'bi-person-plus-fill', label: 'Contact', bg: '#22c55e', onClick: openAddContact },
+                  { icon: 'bi-envelope-plus-fill', label: 'Emails', bg: '#22c55e', onClick: openAddEmails },
+                  { icon: 'bi-receipt', label: 'Invoice', bg: '#3b82f6', onClick: () => {} },
+                  { icon: 'bi-geo-alt-fill', label: 'Address', bg: '#22c55e', onClick: openAddAddress },
                 ].map((b, i) => (
-                  <button key={i} className="btn text-white d-flex align-items-center gap-2" style={{ background: b.bg, borderRadius: 10, fontWeight: 600, fontSize: '.82rem', padding: '8px 18px', border: 'none', boxShadow: `0 2px 8px ${b.bg}33` }} onClick={b.onClick}>
-                    <i className={`bi ${b.icon}`}></i>{b.label}
+                  <button key={i} className="btn btn-sm text-white d-flex align-items-center gap-1" style={{ background: b.bg, borderRadius: 8, fontWeight: 600, fontSize: 'clamp(.68rem, 1.2vw, .82rem)', padding: 'clamp(4px, 1vw, 8px) clamp(8px, 1.5vw, 16px)', border: 'none', boxShadow: `0 2px 8px ${b.bg}33` }} onClick={b.onClick}>
+                    <i className={`bi ${b.icon}`}></i><span className="d-none d-sm-inline">Add </span>{b.label}
                   </button>
                 ))}
               </div>

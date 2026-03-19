@@ -696,6 +696,23 @@ button, .btn, a.btn, input[type="checkbox"], input[type="radio"] {
 
 /* Prevent horizontal overflow globally */
 .page-body > * { max-width: 100%; }
+.page-body { overflow-x: hidden; }
+
+/* All page wrappers - prevent overflow */
+.page-body > div { width: 100%; overflow-x: hidden; }
+
+/* Responsive modals - ensure scroll and fit */
+.modal.show .modal-dialog { max-height: calc(100vh - 20px); }
+.modal-body { overflow-y: auto; max-height: calc(100vh - 180px); }
+
+/* Responsive tables everywhere */
+.table { width: 100%; }
+
+/* Card headers wrap on mobile */
+.card-header .d-flex { flex-wrap: wrap; gap: 8px; }
+
+/* Form rows responsive */
+.row.g-3 > [class*="col-md-"] { min-width: 0; }
 
 /* ============================================
    DESKTOP (> 1200px)
@@ -829,34 +846,101 @@ button, .btn, a.btn, input[type="checkbox"], input[type="radio"] {
   .role-selector { grid-template-columns: 1fr 1fr; }
 
   /* Customer/supplier view header */
-  .card-body.d-flex.align-items-center.gap-3.flex-wrap { padding: 12px !important; gap: 8px !important; }
+  .card-body.d-flex.align-items-center.gap-3.flex-wrap { padding: 10px !important; gap: 6px !important; }
+
+  /* Inner page responsive fixes */
+  /* Avatars */
+  div[style*="width: 64px"][style*="height: 64px"],
+  div[style*="width:64px"] { width: 40px !important; height: 40px !important; font-size: 1rem !important; border-radius: 10px !important; }
+
+  /* Section headers in cards */
+  div[style*="padding: '11px 18px'"],
+  div[style*="padding:'11px 18px'"] { padding: 8px 12px !important; }
+
+  /* Info field rows */
+  div[style*="padding: '9px 16px'"] { padding: 6px 10px !important; }
+  div[style*="width: 115"] { width: 85px !important; font-size: .72rem !important; }
+
+  /* Contact/Address cards */
+  div[style*="width: 44px"][style*="height: 44px"] { width: 32px !important; height: 32px !important; }
+
+  /* Modal inner forms */
+  .modal .row.g-3 { --bs-gutter-x: 0.5rem; --bs-gutter-y: 0.5rem; }
+  .modal .form-label { font-size: 0.72rem !important; margin-bottom: 2px !important; }
+  .modal .form-control, .modal .form-select { font-size: 0.78rem !important; padding: 5px 8px !important; }
+  .modal textarea.form-control { min-height: 60px !important; }
+
+  /* Commission popup tables */
+  .modal .table { font-size: 0.7rem !important; }
+  .modal .table th, .modal .table td { padding: 4px 5px !important; }
+  .modal .table input.form-control-sm { font-size: 0.7rem !important; padding: 2px 4px !important; width: 50px !important; }
+
+  /* Button groups in action bars */
+  .d-flex.gap-2.flex-wrap > .btn { font-size: 0.72rem !important; padding: 4px 8px !important; }
+
+  /* Inline editable fields */
+  span[style*="borderBottom: '1px dashed'"] { font-size: 0.75rem !important; }
+
+  /* Popup payment form */
+  .modal .row.g-3.mb-3 .col-md-4 { flex: 0 0 100% !important; max-width: 100% !important; }
+  .modal .row.g-3.mb-3 .col-md-6 { flex: 0 0 100% !important; max-width: 100% !important; }
+  .modal .row.g-3.align-items-center .col-md-4 { flex: 0 0 50% !important; max-width: 50% !important; text-align: left !important; }
+
+  /* Tab content tables scroll */
+  .card-body .table-responsive,
+  .card-body > div > .table-responsive { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
 }
 
 /* ============================================
    SMALL MOBILE (< 480px)
    ============================================ */
 @media (max-width: 480px) {
-  .page-body { padding: 8px; }
+  .page-body { padding: 6px; }
 
   .stat-card { padding: 8px; gap: 6px; }
-  .stat-value { font-size: 0.9rem; }
-  .stat-icon { width: 30px; height: 30px; font-size: 0.85rem; }
+  .stat-value { font-size: 0.85rem; }
+  .stat-icon { width: 28px; height: 28px; font-size: 0.8rem; border-radius: 7px; }
+  .stat-label { font-size: 0.65rem; }
 
-  .table { font-size: 0.68rem; }
+  .table { font-size: 0.65rem; }
   .table th, .table td { padding: 3px 4px; }
 
-  .btn-sm { padding: 3px 7px; font-size: 0.7rem; }
-  .badge { font-size: 0.62rem; padding: 2px 5px; }
+  .btn { font-size: 0.72rem; padding: 4px 8px; }
+  .btn-sm { padding: 3px 6px; font-size: 0.68rem; }
+  .btn-lg { padding: 6px 12px; font-size: 0.8rem; }
+  .badge { font-size: 0.6rem; padding: 2px 5px; }
 
-  .modal-body { padding: 10px !important; }
-  .form-control, .form-select { font-size: 0.78rem; }
+  .modal-dialog { margin: 4px !important; }
+  .modal-body { padding: 8px !important; }
+  .modal-header { padding: 8px 10px !important; }
+  .modal-footer { padding: 8px 10px !important; }
+  .modal-title { font-size: 0.82rem !important; }
 
-  /* Stack elements that are side-by-side */
-  .d-flex.gap-2 { gap: 0.3rem !important; }
-  .d-flex.gap-3 { gap: 0.4rem !important; }
+  .form-control, .form-select { font-size: 0.75rem; padding: 4px 6px; }
+  .form-label { font-size: 0.68rem; }
 
-  /* Ensure readable line-height */
+  /* All row cols stack on small mobile */
+  .modal .row > [class*="col-md-3"],
+  .modal .row > [class*="col-md-4"],
+  .modal .row > [class*="col-md-6"] { flex: 0 0 100% !important; max-width: 100% !important; }
+
+  /* Stack elements */
+  .d-flex.gap-2 { gap: 0.25rem !important; }
+  .d-flex.gap-3 { gap: 0.35rem !important; }
+
+  /* Card bodies very tight */
+  .card-body { padding: 8px !important; }
+  .card-header { padding: 6px 8px !important; }
+
+  /* Readable line-height */
   p, td, th, span, div { line-height: 1.4; }
+
+  /* Commission grid inputs */
+  .table input[type="number"] { width: 40px !important; font-size: 0.65rem !important; padding: 2px 3px !important; }
+
+  /* Breadcrumb compact */
+  .breadcrumb { font-size: 0.68rem; }
+  .breadcrumb-item + .breadcrumb-item::before { padding: 0 4px; }
 }
 
 /* ============================================

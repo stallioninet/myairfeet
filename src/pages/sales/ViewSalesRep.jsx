@@ -429,10 +429,10 @@ export default function ViewSalesRep() {
   const tabCounts = { customers: customers.length, invoices: invoices.length, commissions: commissions.length }
 
   return (
-    <div>
+    <div style={{ width: '100%', overflowX: 'hidden' }}>
       {/* Breadcrumb */}
-      <nav aria-label="breadcrumb" className="mb-3">
-        <ol className="breadcrumb mb-0" style={{ fontSize: '0.82rem' }}>
+      <nav aria-label="breadcrumb" className="mb-2">
+        <ol className="breadcrumb mb-0" style={{ fontSize: 'clamp(.7rem, 1.5vw, .82rem)' }}>
           <li className="breadcrumb-item"><Link to="/dashboard"><i className="bi bi-house-door"></i></Link></li>
           <li className="breadcrumb-item"><Link to="/sales-reps/active">Sales Reps</Link></li>
           <li className="breadcrumb-item active">{name}</li>
