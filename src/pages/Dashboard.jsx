@@ -117,27 +117,27 @@ export default function Dashboard() {
   if (loading) return <div className="text-center py-5"><div className="spinner-border text-primary"></div><p className="mt-2 text-muted">Loading dashboard...</p></div>
 
   return (
-    <div style={{ maxWidth: 'calc(100vw - 260px)', overflowX: 'hidden' }}>
-      <div className="d-flex justify-content-between align-items-center mb-4">
+    <div style={{ width: '100%', overflowX: 'hidden' }}>
+      <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <div>
           <h4 className="fw-bold mb-1">Dashboard</h4>
-          <p className="text-muted mb-0" style={{ fontSize: 13 }}>Welcome back! Here's your business overview.</p>
+          <p className="text-muted mb-0 d-none d-md-block" style={{ fontSize: 13 }}>Welcome back! Here's your business overview.</p>
         </div>
       </div>
 
       {/* Count Cards */}
-      <div className="row g-3 mb-4">
+      <div className="row g-2 g-md-3 mb-3">
         {countCards.map((card, i) => (
-          <div className="col-md-4 col-lg-2" key={i}>
+          <div className="col-4 col-sm-4 col-md-4 col-lg-2" key={i}>
             <Link to={card.link} className="text-decoration-none">
-              <div className="card border-0 shadow-sm h-100 text-center" style={{ borderRadius: 16, padding: '20px 12px', transition: 'transform 0.2s, box-shadow 0.2s' }}
-                onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.12)' }}
+              <div className="card border-0 shadow-sm h-100 text-center" style={{ borderRadius: 14, padding: '14px 8px', transition: 'transform 0.2s, box-shadow 0.2s' }}
+                onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.12)' }}
                 onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)' }}>
-                <div className="d-flex align-items-center justify-content-center mx-auto mb-2" style={{ width: 44, height: 44, borderRadius: 12, background: card.bg, color: card.color, fontSize: '1.2rem' }}>
+                <div className="d-flex align-items-center justify-content-center mx-auto mb-1" style={{ width: 36, height: 36, borderRadius: 10, background: card.bg, color: card.color, fontSize: '1rem' }}>
                   <i className={`bi ${card.icon}`}></i>
                 </div>
-                <div style={{ fontSize: '1.8rem', fontWeight: 800, lineHeight: 1.1, color: card.color }}>{card.value}</div>
-                <div style={{ fontSize: '.78rem', fontWeight: 600, color: '#64748b', marginTop: 4 }}>{card.label}</div>
+                <div style={{ fontSize: 'clamp(1.2rem, 3vw, 1.8rem)', fontWeight: 800, lineHeight: 1.1, color: card.color }}>{card.value}</div>
+                <div style={{ fontSize: 'clamp(.6rem, 1.5vw, .78rem)', fontWeight: 600, color: '#64748b', marginTop: 2 }}>{card.label}</div>
               </div>
             </Link>
           </div>
@@ -145,15 +145,15 @@ export default function Dashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="row g-3 mb-4">
+      <div className="row g-2 g-md-3 mb-3">
         {kpis.map((kpi, i) => (
-          <div className="col-md-3" key={i}>
-            <div className="stat-card">
-              <div className="d-flex align-items-center gap-3">
-                <div className="stat-icon" style={{ background: kpi.bg, color: kpi.color }}><i className={`bi ${kpi.icon}`}></i></div>
-                <div>
-                  <div className="stat-value" style={{ color: kpi.color }}>{kpi.value}</div>
-                  <div className="stat-label">{kpi.label}</div>
+          <div className="col-6 col-md-3" key={i}>
+            <div className="stat-card" style={{ padding: '16px 14px' }}>
+              <div className="d-flex align-items-center gap-2 gap-md-3">
+                <div className="stat-icon" style={{ background: kpi.bg, color: kpi.color, width: 42, height: 42, fontSize: '1.1rem', borderRadius: 12 }}><i className={`bi ${kpi.icon}`}></i></div>
+                <div style={{ minWidth: 0 }}>
+                  <div className="stat-value text-truncate" style={{ color: kpi.color, fontSize: 'clamp(1rem, 2.5vw, 1.6rem)' }}>{kpi.value}</div>
+                  <div className="stat-label" style={{ fontSize: 'clamp(.65rem, 1.5vw, .85rem)' }}>{kpi.label}</div>
                 </div>
               </div>
             </div>
@@ -162,32 +162,32 @@ export default function Dashboard() {
       </div>
 
       {/* Charts */}
-      <div className="row g-3 mb-4">
-        <div className="col-lg-8">
+      <div className="row g-2 g-md-3 mb-3">
+        <div className="col-12 col-lg-8">
           <div className="card border-0 shadow-sm rounded-4 h-100">
-            <div className="card-body">
-              <h5 className="fw-bold mb-3">Monthly Revenue ({new Date().getFullYear()})</h5>
-              <div style={{ height: 280 }}><canvas ref={revenueCanvasRef}></canvas></div>
+            <div className="card-body p-3">
+              <h6 className="fw-bold mb-2">Monthly Revenue ({new Date().getFullYear()})</h6>
+              <div style={{ height: 'clamp(200px, 30vw, 280px)' }}><canvas ref={revenueCanvasRef}></canvas></div>
             </div>
           </div>
         </div>
-        <div className="col-lg-4">
+        <div className="col-12 col-lg-4">
           <div className="card border-0 shadow-sm rounded-4 h-100">
-            <div className="card-body">
-              <h5 className="fw-bold mb-3">Sales by Rep</h5>
-              <div style={{ height: 280 }}><canvas ref={repCanvasRef}></canvas></div>
+            <div className="card-body p-3">
+              <h6 className="fw-bold mb-2">Sales by Rep</h6>
+              <div style={{ height: 'clamp(200px, 30vw, 280px)' }}><canvas ref={repCanvasRef}></canvas></div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Recent Invoices + Quick Links */}
-      <div className="row g-3">
-        <div className="col-lg-8">
+      <div className="row g-2 g-md-3">
+        <div className="col-12 col-lg-8">
           <div className="card border-0 shadow-sm rounded-4">
-            <div className="card-body">
-              <div className="d-flex justify-content-between align-items-center mb-3">
-                <h5 className="fw-bold mb-0">Recent Invoices</h5>
+            <div className="card-body p-3">
+              <div className="d-flex justify-content-between align-items-center mb-2">
+                <h6 className="fw-bold mb-0">Recent Invoices</h6>
                 <Link to="/invoices" className="text-decoration-none small">View All <i className="bi bi-arrow-right"></i></Link>
               </div>
               <div className="table-responsive">
@@ -214,10 +214,10 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-        <div className="col-lg-4">
+        <div className="col-12 col-lg-4">
           <div className="card border-0 shadow-sm rounded-4 h-100">
-            <div className="card-body">
-              <h5 className="fw-bold mb-3">Quick Links</h5>
+            <div className="card-body p-3">
+              <h6 className="fw-bold mb-2">Quick Links</h6>
               {[
                 { label: 'New Invoice', icon: 'bi-plus-circle', path: '/invoices', bg: '#eff6ff', color: '#2563eb' },
                 { label: 'Sales Reps', icon: 'bi-people', path: '/sales-reps/active', bg: '#f0fdf4', color: '#16a34a' },
