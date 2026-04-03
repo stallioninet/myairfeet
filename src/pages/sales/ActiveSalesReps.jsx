@@ -6,6 +6,9 @@ import { Bar, Line } from 'react-chartjs-2'
 import { api } from '../../lib/api'
 import Pagination from '../../components/Pagination'
 import exportCSV from '../../lib/exportCSV'
+import PageChartHeader from '../../components/PageChartHeader'
+import SlidePanel from '../../components/SlidePanel'
+import SalesRepDetailView from '../../components/SalesRepDetailView'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip, Legend)
 
@@ -28,6 +31,8 @@ export default function ActiveSalesReps() {
   const [reps, setReps] = useState([])
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0 })
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [selectedRepId, setSelectedRepId] = useState(null)
   const [filter, setFilter] = useState('active')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -217,187 +222,59 @@ export default function ActiveSalesReps() {
   })
   const paginatedReps = filteredReps.slice((page - 1) * perPage, page * perPage)
 
+  const headerStats = [
+    { label: 'Active Reps', value: stats.active, icon: 'bi-people-fill', bg: '#eff6ff', color: '#2563eb', trend: 5 },
+    { label: 'Inactive Reps', value: stats.inactive, icon: 'bi-person-dash-fill', bg: '#fef2f2', color: '#ef4444', trend: -1 },
+    { label: 'Total Reps', value: stats.total, icon: 'bi-graph-up', bg: '#ecfdf5', color: '#10b981', trend: 2 },
+  ]
+
+  const reportData = getReportData()
+  const chartData = {
+    labels: reportData.map(r => r.name),
+    datasets: [{
+      label: reportMetric === 'commissions' ? 'Commissions' : 'Sales Volume',
+      data: reportData.map(r => r.val),
+      backgroundColor: reportData.map((_, i) => chartColors[i % chartColors.length] + 'cc'),
+      borderRadius: 8,
+    }],
+  }
+
+  const breadcrumbs = [
+    { label: 'Dashboard', link: '/dashboard' },
+    { label: 'Sales' },
+    { label: 'Active Representatives' }
+  ]
+
   return (
     <>
-      {/* Page Header */}
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <div>
-          <nav aria-label="breadcrumb">
-            <ol className="breadcrumb mb-1">
-              <li className="breadcrumb-item"><Link to="/"><i className="bi bi-house-door"></i></Link></li>
-              <li className="breadcrumb-item">Sales</li>
-              <li className="breadcrumb-item active">Sales Reps</li>
-            </ol>
-          </nav>
-          <h3 className="mb-0">Sales Representatives</h3>
-        </div>
-        <div className="d-flex gap-2">
-          <button className="btn btn-outline-primary" onClick={() => exportCSV(
-            filteredReps.map(r => [r.rep_number, r.first_name + ' ' + r.last_name, r.address, r.city, r.state, r.zip, r.phone, r.email, r.status]),
-            ['REP#', 'Rep Name', 'Address', 'City', 'State', 'Zip', 'Phone', 'Email', 'Status'], 'active-sales-reps'
-          )}>
-            <i className="bi bi-download me-1"></i> Export
-          </button>
-          <Link to="/sales-reps/create" className="btn btn-primary">
-            <i className="bi bi-plus-lg me-1"></i> New Sales Rep
-          </Link>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="row g-3 mb-4">
-        {[
-          { value: stats.active, label: 'Active Reps', icon: 'bi-people-fill', bg: '#eff6ff', color: '#2563eb' },
-          { value: stats.inactive, label: 'Inactive Reps', icon: 'bi-person-dash-fill', bg: '#fef2f2', color: '#ef4444' },
-          { value: stats.total, label: 'Total Reps', icon: 'bi-graph-up', bg: '#ecfdf5', color: '#10b981' },
-        ].map((stat, i) => (
-          <div className="col-md-4 col-6" key={i}>
-            <div className="stat-card">
-              <div className="d-flex align-items-center gap-3">
-                <div className="stat-icon" style={{ background: stat.bg, color: stat.color }}>
-                  <i className={`bi ${stat.icon}`}></i>
-                </div>
-                <div>
-                  <div className="stat-value">{loading ? '-' : stat.value}</div>
-                  <div className="stat-label">{stat.label}</div>
-                </div>
-              </div>
+      <PageChartHeader
+        title="Sales Representatives"
+        subtitle="Monitor performance and handle assignments"
+        breadcrumbs={breadcrumbs}
+        stats={headerStats}
+        chartData={chartData}
+        chartType={chartType === 'line' ? 'line' : 'bar'}
+        actions={
+          <>
+            <div className="btn-group shadow-sm">
+              <button className={`btn btn-sm ${reportMetric === 'sales' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setReportMetric('sales')}>Sales</button>
+              <button className={`btn btn-sm ${reportMetric === 'commissions' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setReportMetric('commissions')}>Commissions</button>
             </div>
-          </div>
-        ))}
-      </div>
-
-      {/* ===== SALES REPORTS PANEL ===== */}
-      {!loading && reps.length > 0 && (() => {
-        const reportData = getReportData()
-        const total = reportData.reduce((s, r) => s + r.val, 0)
-        const avg = reportData.length ? Math.round(total / reportData.length) : 0
-        const top = reportData.reduce((best, r) => r.val > (best?.val || 0) ? r : best, null)
-        const commTotal = reportData.reduce((s, r) => s + Math.round(r.val * 0.15), 0)
-        const sorted = [...reportData].sort((a, b) => b.val - a.val)
-        const maxVal = sorted[0]?.val || 1
-        const activeReps = reps.filter(r => r.status === 'active')
-
-        const chartData = {
-          labels: reportData.map(r => r.name),
-          datasets: [{
-            label: reportMetric === 'commissions' ? 'Commissions' : 'Sales Volume',
-            data: reportData.map(r => r.val),
-            backgroundColor: reportData.map(r => r.color + 'cc'),
-            borderColor: reportData.map(r => r.color),
-            borderWidth: chartType === 'line' ? 2 : 0,
-            fill: chartType === 'line',
-            tension: 0.4,
-            borderRadius: 8,
-            pointRadius: 5,
-            pointBackgroundColor: '#fff',
-          }],
+            <div className="dropdown shadow-sm">
+              <button className="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">{reportPeriodLabel}</button>
+              <ul className="dropdown-menu shadow border-0">
+                {[['this-month','This Month'],['last-month','Last Month'],['q1','Q1 2026'],['q2','Q2 2026'],['ytd','Year to Date']].map(([k,l]) => (
+                  <li key={k}><button className="dropdown-item small" onClick={() => { setReportPeriod(k); setReportPeriodLabel(l) }}>{l}</button></li>
+                ))}
+              </ul>
+            </div>
+            <Link to="/sales-reps/create" className="btn btn-sm btn-primary shadow-sm" style={{ fontWeight: 600 }}>
+              <i className="bi bi-plus-lg"></i>
+            </Link>
+          </>
         }
-        const chartOpts = {
-          responsive: true,
-          maintainAspectRatio: false,
-          indexAxis: chartType === 'horizontalBar' ? 'y' : 'x',
-          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' $' + ctx.raw.toLocaleString() } } },
-          scales: {
-            y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: chartType === 'horizontalBar' ? {} : { callback: v => '$' + (v / 1000) + 'k', font: { size: 11 } } },
-            x: { grid: { display: false }, ticks: chartType === 'horizontalBar' ? { callback: v => '$' + (v / 1000) + 'k', font: { size: 11 } } : { font: { size: 11 } } },
-          },
-        }
-        const ChartComp = chartType === 'line' ? Line : Bar
+      />
 
-        return (
-          <div className="card mb-4 border-0 shadow-sm" style={{ borderRadius: 12, overflow: 'hidden' }}>
-            {/* Report Toolbar */}
-            <div className="card-header py-3 px-4 border-0" style={{ background: 'linear-gradient(135deg, #1e293b, #334155)' }}>
-              <div className="d-flex flex-wrap gap-3 align-items-center justify-content-between">
-                <div className="d-flex align-items-center gap-2 text-white">
-                  <i className="bi bi-bar-chart-line fs-5"></i>
-                  <h5 className="fw-semibold mb-0">Sales Reports</h5>
-                  <span className="badge bg-white bg-opacity-25 rounded-pill">{selectedRepIds === null ? 'All Reps' : reportData.length + ' Rep' + (reportData.length !== 1 ? 's' : '')}</span>
-                </div>
-                <div className="d-flex flex-wrap gap-2 align-items-center">
-                  {/* Metric Toggle */}
-                  <div className="btn-group btn-group-sm">
-                    <button className={`btn btn-outline-light${reportMetric === 'sales' ? ' active' : ''}`} onClick={() => setReportMetric('sales')}><i className="bi bi-graph-up me-1"></i>Sales</button>
-                    <button className={`btn btn-outline-light${reportMetric === 'commissions' ? ' active' : ''}`} onClick={() => setReportMetric('commissions')}><i className="bi bi-wallet2 me-1"></i>Commissions</button>
-                  </div>
-                  {/* Period Selector */}
-                  <div className="dropdown">
-                    <button className="btn btn-sm btn-outline-light dropdown-toggle" data-bs-toggle="dropdown">{reportPeriodLabel}</button>
-                    <ul className="dropdown-menu">
-                      {[['this-month','This Month'],['last-month','Last Month'],['q1','Q1 2026'],['q2','Q2 2026'],['ytd','Year to Date']].map(([k,l]) => (
-                        <li key={k}><button className="dropdown-item" onClick={() => { setReportPeriod(k); setReportPeriodLabel(l) }}>{l}</button></li>
-                      ))}
-                    </ul>
-                  </div>
-                  {/* Rep Selector */}
-                  <div className="dropdown">
-                    <button className="btn btn-sm btn-outline-light dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside"><i className="bi bi-people me-1"></i>Select Reps</button>
-                    <div className="dropdown-menu p-3" style={{ minWidth: 280 }}>
-                      <div className="d-flex justify-content-between mb-2">
-                        <button className="btn btn-link btn-sm p-0 text-primary" onClick={() => setSelectedRepIds(null)}>Select All</button>
-                        <button className="btn btn-link btn-sm p-0 text-danger" onClick={() => setSelectedRepIds([])}>Clear All</button>
-                      </div>
-                      <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-                        {activeReps.map(r => (
-                          <div className="form-check" key={r._id}>
-                            <input className="form-check-input" type="checkbox" id={'rchk_' + r._id}
-                              checked={selectedRepIds === null || selectedRepIds.includes(r._id)}
-                              onChange={e => {
-                                const all = activeReps.map(x => x._id)
-                                let cur = selectedRepIds === null ? [...all] : [...selectedRepIds]
-                                if (e.target.checked) { cur.push(r._id); cur = [...new Set(cur)] } else { cur = cur.filter(id => id !== r._id) }
-                                setSelectedRepIds(cur.length === all.length ? null : cur)
-                              }} />
-                            <label className="form-check-label small" htmlFor={'rchk_' + r._id}>{r.first_name} {r.last_name}</label>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  {/* Chart Type */}
-                  <div className="dropdown">
-                    <button className="btn btn-sm btn-outline-light dropdown-toggle" data-bs-toggle="dropdown">{chartType === 'bar' ? 'Bar Chart' : chartType === 'line' ? 'Line Chart' : 'Horizontal Bar'}</button>
-                    <ul className="dropdown-menu">
-                      {[['bar','Bar Chart'],['line','Line Chart'],['horizontalBar','Horizontal Bar']].map(([k,l]) => (
-                        <li key={k}><button className="dropdown-item" onClick={() => setChartType(k)}>{l}</button></li>
-                      ))}
-                    </ul>
-                  </div>
-                  {/* Download */}
-                  <button className="btn btn-sm btn-outline-light" title="Download Chart" onClick={() => {
-                    const canvas = chartRef.current?.canvas
-                    if (canvas) { const a = document.createElement('a'); a.download = 'sales-report.png'; a.href = canvas.toDataURL(); a.click() }
-                  }}><i className="bi bi-download"></i></button>
-                </div>
-              </div>
-            </div>
-
-            {/* Summary Metrics Row */}
-            <div className="row g-0 border-bottom">
-              {[
-                { label: 'Total Sales', value: '$' + total.toLocaleString(), color: '#2563eb' },
-                { label: 'Avg. Per Rep', value: '$' + avg.toLocaleString(), color: '#333' },
-                { label: 'Top Performer', value: top ? top.name.split(' ')[0] : '—', color: '#16a34a' },
-                { label: 'Total Commissions', value: '$' + commTotal.toLocaleString(), color: '#7c3aed' },
-              ].map((m, i) => (
-                <div className="col-6 col-md-3 p-3 text-center" key={i} style={{ borderRight: i < 3 ? '1px solid #e5e7eb' : 'none' }}>
-                  <div className="text-muted small">{m.label}</div>
-                  <div className="fw-bold fs-5" style={{ color: m.color }}>{m.value}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Chart Area */}
-            <div className="card-body p-4">
-              <div style={{ height: 300 }}>
-                <ChartComp ref={chartRef} data={chartData} options={chartOpts} />
-              </div>
-            </div>
-
-          </div>
-        )
-      })()}
 
       {/* Filter Pills */}
       <div className="filter-pills d-flex gap-2 mb-3">
@@ -495,9 +372,9 @@ export default function ActiveSalesReps() {
                         </a>
                       </td>
                       <td className="pe-4 text-center">
-                        <Link to={'/sales-reps/' + r._id} className="btn btn-sm btn-action btn-outline-info me-1" title="View">
+                        <button className="btn btn-sm btn-action btn-outline-info me-1" title="View" onClick={() => { setSelectedRepId(r._id); setPanelOpen(true) }}>
                           <i className="bi bi-eye"></i>
-                        </Link>
+                        </button>
                         <button className="btn btn-sm btn-action btn-outline-primary me-1" title="Edit" onClick={() => openEditModal(r)}>
                           <i className="bi bi-pencil"></i>
                         </button>
@@ -737,6 +614,17 @@ export default function ActiveSalesReps() {
           </div>
         </div>
       </>)}
+
+      {/* Sales Rep Detail Panel */}
+      <SlidePanel
+        isOpen={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        title="Sales Representative Details"
+        subtitle="Performance, assignments, and profile"
+        width="1100px"
+      >
+        {selectedRepId && <SalesRepDetailView id={selectedRepId} />}
+      </SlidePanel>
     </>
   )
 }

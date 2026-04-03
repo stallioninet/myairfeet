@@ -245,6 +245,63 @@ router.post('/:id/customer-po', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
+// GET invoice analytics — top customers by volume & outstanding balance
+router.get('/analytics/top-customers', async (req, res) => {
+  try {
+    const pipeline = [
+      {
+        $group: {
+          _id: '$company_id',
+          invoice_count: { $sum: 1 },
+          total_amount: { $sum: '$net_amount' },
+          outstanding_amount: {
+            $sum: {
+              $cond: [{ $ne: ['$paid_value', 'PAID'] }, '$net_amount', 0]
+            }
+          },
+          unpaid_count: {
+            $sum: { $cond: [{ $ne: ['$paid_value', 'PAID'] }, 1, 0] }
+          }
+        }
+      },
+      {
+        $lookup: {
+          from: 'customers',
+          let: { cid: '$_id' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$legacy_id', '$$cid'] } } },
+            { $project: { company_name: 1 } }
+          ],
+          as: 'customer'
+        }
+      },
+      {
+        $addFields: {
+          company_name: { $ifNull: [{ $arrayElemAt: ['$customer.company_name', 0] }, 'Unknown'] }
+        }
+      },
+      { $project: { customer: 0 } }
+    ]
+
+    const results = await col().aggregate(pipeline).toArray()
+
+    // Top 10 by invoice count
+    const topByCount = [...results]
+      .sort((a, b) => b.invoice_count - a.invoice_count)
+      .slice(0, 10)
+
+    // Top 10 by outstanding balance
+    const topByOutstanding = [...results]
+      .filter(r => r.outstanding_amount > 0)
+      .sort((a, b) => b.outstanding_amount - a.outstanding_amount)
+      .slice(0, 10)
+
+    res.json({ topByCount, topByOutstanding })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // GET single invoice with items
 router.get('/:id', async (req, res) => {
   try {

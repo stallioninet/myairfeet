@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { api } from '../../lib/api'
+import PageChartHeader from '../../components/PageChartHeader'
 import ItemTypeList from './ItemTypeList'
 import ProductItemList from './ProductItemList'
 import ProductSizeList from './ProductSizeList'
@@ -15,6 +17,44 @@ const tabs = [
 export default function ItemsHub() {
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = searchParams.get('tab') || 'types'
+  const [stats, setStats] = useState([])
+  const [chartData, setChartData] = useState(null)
+
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const [products, types] = await Promise.all([api.getProducts(), api.getItemTypes()])
+        const activeTypes = types.filter(t => t.status === 'active').length
+        const totalProds = products.length
+        const avgPrice = products.length > 0 ? (products.reduce((s, p) => s + (p.unit_price || 0), 0) / products.length) : 0
+
+        setStats([
+          { label: 'Total Products', value: totalProds, icon: 'bi-box-seam', color: '#2563eb', bg: '#eff6ff' },
+          { label: 'Active Types', value: activeTypes, icon: 'bi-tags', color: '#7c3aed', bg: '#f5f3ff' },
+          { label: 'Avg Price', value: `$${avgPrice.toFixed(2)}`, icon: 'bi-currency-dollar', color: '#16a34a', bg: '#f0fdf4' },
+          { label: 'Grouped Items', value: products.filter(p => p.group_id).length, icon: 'bi-collection', color: '#ea580c', bg: '#fff7ed' },
+        ])
+
+        // Chart Data: Product Distribution by Type
+        const typeCounts = {}
+        products.forEach(p => {
+          const type = (p.item_type && typeof p.item_type === 'object') ? p.item_type.name : 'Other'
+          typeCounts[type] = (typeCounts[type] || 0) + 1
+        })
+
+        setChartData({
+          labels: Object.keys(typeCounts),
+          datasets: [{
+            label: 'Product Distribution',
+            data: Object.values(typeCounts),
+            backgroundColor: ['#2563eb', '#7c3aed', '#16a34a', '#ea580c', '#db2777', '#0ea5e9'],
+            borderWidth: 0,
+          }]
+        })
+      } catch (err) { console.error('Stats error:', err) }
+    }
+    fetchStats()
+  }, [])
 
   function setTab(key) {
     setSearchParams({ tab: key })
@@ -22,18 +62,17 @@ export default function ItemsHub() {
 
   return (
     <div>
-      {/* Page Header */}
-      <div className="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-2">
-        <div>
-          <h2 className="mb-1">Item Management</h2>
-          <nav aria-label="breadcrumb">
-            <ol className="breadcrumb mb-0">
-              <li className="breadcrumb-item"><Link to="/dashboard"><i className="bi bi-house-door"></i></Link></li>
-              <li className="breadcrumb-item active">Items</li>
-            </ol>
-          </nav>
-        </div>
-      </div>
+      <PageChartHeader
+        title="Item Management"
+        subtitle="Manage your products, categories, sizes and groupings"
+        breadcrumbs={[
+          { label: 'Dashboard', link: '/dashboard' },
+          { label: 'Items' }
+        ]}
+        stats={stats}
+        chartData={chartData}
+        chartType="bar"
+      />
 
       {/* Tab Navigation */}
       <div className="card border-0 shadow-sm" style={{ borderRadius: 12, overflow: 'hidden' }}>

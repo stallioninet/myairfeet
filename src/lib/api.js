@@ -279,6 +279,7 @@ export const api = {
   getInvoiceStats: () => request('/invoices/stats'),
   getInvoiceYears: () => request('/invoices/years'),
   getInvoiceFileMap: () => request('/invoices/file-map'),
+  getInvoiceTopCustomers: () => request('/invoices/analytics/top-customers'),
   getInvoice: (id) => request(`/invoices/${id}`),
   getInvoiceView: (id) => request(`/invoices/${id}/invoice`),
   updateInvoiceStatus: (id, inv_status) => request(`/invoices/${id}/status`, { method: 'PUT', body: JSON.stringify({ inv_status }) }),
@@ -305,6 +306,30 @@ export const api = {
   createCommission: (data) => request('/commissions', { method: 'POST', body: JSON.stringify(data) }),
   updateCommission: (id, data) => request(`/commissions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   addCommissionPayment: (id, data) => request(`/commissions/${id}/payment`, { method: 'POST', body: JSON.stringify(data) }),
+
+  // Pilot Programs
+  getPilotPrograms: (status) => request('/pilot-programs' + (status ? '?status=' + status : '')),
+  getPilotProgramStats: () => request('/pilot-programs/stats'),
+  getPilotProgramCustomers: () => request('/pilot-programs/lookup/customers'),
+  getPilotProgramReps: () => request('/pilot-programs/lookup/reps'),
+  getPilotProgram: (id) => request(`/pilot-programs/${id}`),
+  createPilotProgram: (data) => request('/pilot-programs', { method: 'POST', body: JSON.stringify(data) }),
+  updatePilotProgram: (id, data) => request(`/pilot-programs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  markPilotProgramPaid: (id, data) => request(`/pilot-programs/${id}/paid`, { method: 'PUT', body: JSON.stringify(data) }),
+  markPilotProgramUnpaid: (id) => request(`/pilot-programs/${id}/unpaid`, { method: 'PUT' }),
+  updatePilotProgramStatus: (id, status) => request(`/pilot-programs/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  deletePilotProgram: (id) => request(`/pilot-programs/${id}`, { method: 'DELETE' }),
+  uploadPilotProgramDocs: async (id, files, category) => {
+    const formData = new FormData()
+    files.forEach(f => formData.append('files', f))
+    formData.append('category', category || 'reports')
+    const res = await fetch(`${API_URL}/pilot-programs/${id}/documents`, { method: 'POST', body: formData })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Upload failed')
+    return data
+  },
+  deletePilotProgramDoc: (id, docId) => request(`/pilot-programs/${id}/documents/${docId}`, { method: 'DELETE' }),
+  pilotProgramFileUrl: (filename) => `${API_URL}/pilot-programs/file/${filename}`,
 
   // Reports
   getReportYear: () => request('/reports/year'),

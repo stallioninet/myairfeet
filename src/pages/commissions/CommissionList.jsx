@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../../lib/api'
 import Pagination from '../../components/Pagination'
+import PageChartHeader from '../../components/PageChartHeader'
 
 export default function CommissionList() {
   const [commissions, setCommissions] = useState([])
@@ -11,6 +12,7 @@ export default function CommissionList() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
+  const [filterPaid, setFilterPaid] = useState('') // '' | 'paid' | 'partial' | 'unpaid'
   const [deleteComm, setDeleteComm] = useState(null)
   const [viewComm, setViewComm] = useState(null)
   const [viewLoading, setViewLoading] = useState(false)
@@ -286,6 +288,10 @@ export default function CommissionList() {
   }
 
   const filtered = commissions.filter(c => {
+    if (filterPaid === 'paid' && c.pay_status !== 2) return false
+    if (filterPaid === 'partial' && c.pay_status !== 1) return false
+    if (filterPaid === 'unpaid' && c.pay_status !== 0) return false
+    
     if (!search) return true
     const s = search.toLowerCase()
     return c.company_name?.toLowerCase().includes(s) ||
@@ -293,62 +299,105 @@ export default function CommissionList() {
       c.po_number?.toLowerCase().includes(s)
   })
 
+  // Calculate status counts for analytics
+  const statusStats = {
+    paid: commissions.filter(c => c.pay_status === 2).length,
+    partial: commissions.filter(c => c.pay_status === 1).length,
+    unpaid: commissions.filter(c => c.pay_status === 0).length,
+    totalComm: commissions.reduce((s, c) => s + (c.total_comm || 0), 0)
+  }
+
+  const chartData = {
+    labels: ['Paid Full', 'Partial', 'Not Paid'],
+    onSliceClick: (index) => {
+      const statuses = ['paid', 'partial', 'unpaid']
+      setFilterPaid(statuses[index])
+    },
+    datasets: [{
+      data: [statusStats.paid, statusStats.partial, statusStats.unpaid],
+      backgroundColor: ['#10b981', '#f59e0b', '#ef4444'], // green, orange, red
+      borderWidth: 0,
+      hoverOffset: 12
+    }]
+  }
+
   const paginated = filtered.slice((page - 1) * perPage, page * perPage)
 
   return (
-    <div>
-      {/* Header */}
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <div>
-          <nav aria-label="breadcrumb">
-            <ol className="breadcrumb mb-1">
-              <li className="breadcrumb-item"><Link to="/dashboard"><i className="bi bi-house-door"></i></Link></li>
-              <li className="breadcrumb-item active">Commissions</li>
-            </ol>
-          </nav>
-          <h3 className="mb-0">Commissions</h3>
-        </div>
-        <button className="btn btn-primary" onClick={openCreate}>
-          <i className="bi bi-plus-lg me-1"></i> Add Commission
-        </button>
-      </div>
+    <div style={{ width: '100%', overflowX: 'hidden' }}>
+      <PageChartHeader
+        title="Commission Tracker"
+        subtitle="Track and manage sales rep commissions and payments"
+        breadcrumbs={[{ label: 'Dashboard', link: '/dashboard' }, { label: 'Commissions' }]}
+        chartType="doughnut"
+        chartData={chartData}
+        stats={[
+          {
+            label: 'Total Commissions',
+            value: statusStats.totalComm ? fmtMoney(statusStats.totalComm) : '$0.00',
+            icon: 'bi-cash-stack',
+            bg: '#eff6ff',
+            color: '#2563eb',
+            onClick: () => setFilterPaid('')
+          },
+          {
+            label: 'Paid (🟢)',
+            value: statusStats.paid,
+            icon: 'bi-check-circle',
+            bg: '#f0fdf4',
+            color: '#16a34a',
+            onClick: () => setFilterPaid('paid')
+          },
+          {
+            label: 'Partial (🟡)',
+            value: statusStats.partial,
+            icon: 'bi-clock-history',
+            bg: '#fff7ed',
+            color: '#ea580c',
+            onClick: () => setFilterPaid('partial')
+          },
+          {
+            label: 'Not Paid (🔴)',
+            value: statusStats.unpaid,
+            icon: 'bi-exclamation-circle',
+            bg: '#fef2f2',
+            color: '#dc2626',
+            onClick: () => setFilterPaid('unpaid')
+          }
+        ]}
+        actions={
+          <button className="btn btn-primary px-4 shadow-sm" style={{ borderRadius: 12, fontWeight: 600 }} onClick={openCreate}>
+            <i className="bi bi-plus-lg me-1"></i> Add Commission
+          </button>
+        }
+      />
 
-      {/* Stats */}
-      <div className="row g-3 mb-4">
-        {[
-          { value: stats.total, label: 'Total Commissions', icon: 'bi-cash-stack', bg: '#eff6ff', color: '#2563eb' },
-          { value: fmtMoney(stats.totalComm), label: 'Total Commission $', icon: 'bi-currency-dollar', bg: '#ecfdf5', color: '#10b981', raw: true },
-        ].map((stat, i) => (
-          <div className="col-md-3 col-6" key={i}>
-            <div className="stat-card">
-              <div className="d-flex align-items-center gap-3">
-                <div className="stat-icon" style={{ background: stat.bg, color: stat.color }}>
-                  <i className={`bi ${stat.icon}`}></i>
-                </div>
-                <div>
-                  <div className="stat-value">{loading ? '-' : stat.value}</div>
-                  <div className="stat-label">{stat.label}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Search */}
+      {/* Search & Filter Badge */}
       <div className="card border-0 shadow-sm rounded-4 mb-3">
         <div className="card-body py-3 px-4">
           <div className="d-flex flex-wrap align-items-center gap-3">
             <div className="position-relative flex-grow-1" style={{ maxWidth: 320 }}>
-              <i className="bi bi-search position-absolute" style={{ left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}></i>
-              <input type="text" className="form-control form-control-sm ps-5" placeholder="Search commissions..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
+              <i className="bi bi-search position-absolute" style={{ left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}></i>
+              <input type="text" className="form-control form-control-sm ps-5 bg-light border-0 shadow-none" style={{ borderRadius: 10, height: 38 }} placeholder="Search commissions..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
             </div>
-            {search && (
-              <button className="btn btn-sm btn-outline-secondary" onClick={() => { setSearch(''); setPage(1) }}>
-                <i className="bi bi-x-lg me-1"></i>Clear
-              </button>
+            
+            {filterPaid && (
+              <div className="badge d-flex align-items-center gap-2 px-3 py-2" style={{ background: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+                <span className="fw-medium">Showing: <span className="text-primary" style={{ textTransform: 'capitalize' }}>{filterPaid === 'unpaid' ? 'Not Paid' : filterPaid} Commissions</span></span>
+                <button className="btn btn-sm p-0 d-flex align-items-center justify-content-center" style={{ width: 18, height: 18, background: '#e2e8f0', borderRadius: '50%', color: '#64748b' }} onClick={() => setFilterPaid('')}>
+                  <i className="bi bi-x" style={{ fontSize: 14 }}></i>
+                </button>
+              </div>
             )}
-            <span className="text-muted small ms-auto">{filtered.length} commission{filtered.length !== 1 ? 's' : ''}</span>
+
+            <div className="ms-auto d-flex align-items-center gap-3">
+              {search && (
+                <button className="btn btn-sm btn-link text-muted text-decoration-none" onClick={() => { setSearch(''); setPage(1) }}>
+                  Clear Search
+                </button>
+              )}
+              <span className="text-muted small fw-medium">{filtered.length} record{filtered.length !== 1 ? 's' : ''}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -391,15 +440,18 @@ export default function CommissionList() {
                   <td className="fw-semibold">{fmtMoney(comm.net_amount)}</td>
                   <td className="fw-semibold">{fmtMoney(comm.total_comm)}</td>
                   <td className="text-center">
-                    <span
-                      className="badge rounded-pill px-3 py-1"
-                      style={{ background: getPayBg(comm.pay_status), color: '#333', cursor: 'pointer', fontSize: 11, minWidth: 60 }}
+                    <div
+                      className="d-inline-flex align-items-center gap-2 px-3 py-1 fw-bold"
+                      style={{ background: getPayBg(comm.pay_status) + '40', color: '#333', cursor: 'pointer', fontSize: 11, borderRadius: 12, border: `1px solid ${getPayBg(comm.pay_status)}` }}
                       onClick={() => handleTogglePaid(comm)}
                       title="Click to toggle"
                     >
-                      {getPayLabel(comm.pay_status)}
-                      {comm.pay_status === 1 && <div style={{ fontSize: 10 }}>Bal: {fmtMoney(comm.balance)}</div>}
-                    </span>
+                      <span style={{ fontSize: 14 }}>{comm.pay_status === 2 ? '🟢' : comm.pay_status === 1 ? '🟡' : '🔴'}</span>
+                      <div className="text-start" style={{ lineHeight: 1.1 }}>
+                        <div>{getPayLabel(comm.pay_status)}</div>
+                        {comm.pay_status === 1 && <div style={{ fontSize: 9, opacity: 0.8 }}>Bal: {fmtMoney(comm.balance)}</div>}
+                      </div>
+                    </div>
                   </td>
                   <td className="text-center">
                     <button className="btn btn-sm btn-action btn-outline-primary me-1" title="Edit" onClick={() => openEdit(comm)}>

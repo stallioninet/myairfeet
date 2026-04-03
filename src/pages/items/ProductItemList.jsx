@@ -5,8 +5,9 @@ import { api } from '../../lib/api'
 import Pagination from '../../components/Pagination'
 import exportCSV from '../../lib/exportCSV'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
+import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import SlidePanel from '../../components/SlidePanel'
 
 const typeStyles = {
   Footwear:    { bg: '#dbeafe', color: '#1d4ed8', icon: 'bi-shoe' },
@@ -16,23 +17,136 @@ const typeStyles = {
   Display:     { bg: '#ffe4e6', color: '#be123c', icon: 'bi-easel' },
 }
 
-const emptyForm = { name: '', item_type: '', unit_price: '', base_price: '', notes: '', status: 'active' }
+const emptyForm = {
+  name: '',
+  item_type: '',
+  unit_price: '',
+  base_price: '',
+  website_price: '',
+  website_price_type: 'fixed',
+  msrp: '',
+  msrp_type: 'fixed',
+  distributor_price: '',
+  distributor_price_type: 'fixed',
+  retail_store_price: '',
+  retail_store_price_type: 'fixed',
+  manufacturing_cost: '',
+  shipping_cost: '',
+  duties: '',
+  packaging: '',
+  labor: '',
+  other_expenses: '',
+  notes: '',
+  status: 'active'
+}
 
-function SortableRow({ id, children }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+function SortableRow({ product, expanded, onToggleExpand, index, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: product._id })
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
     background: isDragging ? '#eff6ff' : undefined,
   }
+
+  const formatPrice = (val, type, base) => {
+    const v = parseFloat(val) || 0
+    if (type === 'percent') {
+      const discounted = (parseFloat(base) || 0) * (1 - v / 100)
+      return `${v}% Off ($${discounted.toFixed(2)})`
+    }
+    return `$${v.toFixed(2)}`
+  }
+
   return (
-    <tr ref={setNodeRef} style={style} {...attributes}>
-      <td className="ps-3 text-center" style={{ width: 40, cursor: 'grab' }} {...listeners}>
-        <i className="bi bi-grip-vertical text-muted"></i>
-      </td>
-      {children}
-    </tr>
+    <>
+      <tr ref={setNodeRef} style={style} {...attributes}>
+        <td className="ps-3 text-center" style={{ width: 40, cursor: 'grab' }} {...listeners}>
+          <i className="bi bi-grip-vertical text-muted"></i>
+        </td>
+        <td className="text-muted">
+          <button
+            className="btn btn-sm btn-link p-0 text-muted me-2"
+            onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
+          >
+            <i className={`bi bi-chevron-${expanded ? 'down' : 'right'}`}></i>
+          </button>
+          {index}
+        </td>
+        {children}
+      </tr>
+      {expanded && (
+        <tr className="bg-light border-start border-primary border-4" style={{ position: 'relative', zIndex: 1 }}>
+          <td colSpan="8" className="p-3">
+             <div className="row g-3">
+                {[
+                  { id: 'website_price', label: 'AIRfeet Website Price', val: product.website_price, type: product.website_price_type, icon: 'bi-globe' },
+                  { id: 'msrp', label: 'MSRP (Retail Price)', val: product.msrp, type: product.msrp_type, icon: 'bi-tag' },
+                  { id: 'distributor_price', label: 'Distributor Price', val: product.distributor_price, type: product.distributor_price_type, icon: 'bi-truck' },
+                  { id: 'retail_store_price', label: 'Retail Store Price', val: product.retail_store_price, type: product.retail_store_price_type, icon: 'bi-shop' },
+                ].map((p, i) => (
+                  <div className="col-md-3" key={i}>
+                    <div className="d-flex align-items-center gap-2 border rounded p-2 bg-white">
+                      <div className="text-primary bg-primary bg-opacity-10 rounded p-2" style={{ width: 40, textAlign: 'center' }}>
+                        <i className={`bi ${p.icon}`}></i>
+                      </div>
+                      <div>
+                        <div className="small text-muted fw-semibold" style={{ fontSize: '0.65rem', textTransform: 'uppercase' }}>{p.label}</div>
+                        <div className="fw-bold" style={{ fontSize: '0.85rem' }}>
+                          {Number(p.val) > 0 ? `$${calculatePrice(p.val, p.type, product.base_price).toFixed(2)}` : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 pt-3 border-top">
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <h6 className="fw-bold mb-0 text-primary"><i className="bi bi-graph-up-arrow me-2"></i>Profit & Margin Analysis</h6>
+                  <div className="badge bg-light text-dark border p-2 rounded-3">Total Cost: <span className="text-danger fw-bold">${((parseFloat(product.manufacturing_cost) || 0) + (parseFloat(product.shipping_cost) || 0) + (parseFloat(product.duties) || 0) + (parseFloat(product.packaging) || 0) + (parseFloat(product.labor) || 0) + (parseFloat(product.other_expenses) || 0)).toFixed(2)}</span></div>
+                </div>
+                <div className="table-responsive">
+                  <table className="table table-sm table-bordered mb-0 align-middle text-center" style={{ fontSize: '0.75rem' }}>
+                    <thead className="bg-light">
+                      <tr>
+                        <th>Pricing Level</th>
+                        <th>Selling Price</th>
+                        <th>Gross Profit</th>
+                        <th>Profit Margin</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { label: 'AIRfeet Website', val: product.website_price, type: product.website_price_type },
+                        { label: 'MSRP Retail', val: product.msrp, type: product.msrp_type },
+                        { label: 'Distributor', val: product.distributor_price, type: product.distributor_price_type },
+                        { label: 'Retail Store', val: product.retail_store_price, type: product.retail_store_price_type },
+                      ].map((p, i) => {
+                        const sellPrice = calculatePrice(p.val, p.type, product.base_price)
+                        const totalCost = (parseFloat(product.manufacturing_cost) || 0) + (parseFloat(product.shipping_cost) || 0) + (parseFloat(product.duties) || 0) + (parseFloat(product.packaging) || 0) + (parseFloat(product.labor) || 0) + (parseFloat(product.other_expenses) || 0)
+                        const profit = sellPrice - totalCost
+                        const margin = sellPrice > 0 ? (profit / sellPrice) * 100 : 0
+                        return (
+                          <tr key={i}>
+                            <td className="fw-semibold text-start ps-3">{p.label}</td>
+                            <td className="fw-bold text-primary">${sellPrice.toFixed(2)}</td>
+                            <td className={`fw-bold ${profit > 0 ? 'text-success' : 'text-danger'}`}>${profit.toFixed(2)}</td>
+                            <td>
+                              <span className={`badge ${margin > 25 ? 'bg-success' : margin > 10 ? 'bg-warning text-dark' : 'bg-danger'}`}>
+                                {margin.toFixed(1)}%
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+          </td>
+        </tr>
+      )}
+    </>
   )
 }
 
@@ -51,6 +165,11 @@ export default function ProductItemList() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
+  const [expandedRows, setExpandedRows] = useState({}) // { productId: bool }
+
+  const toggleExpand = (id) => {
+    setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }))
+  }
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -121,6 +240,24 @@ export default function ProductItemList() {
     return products.filter(p => getTypeName(p) === name).length
   }
 
+  // Calculate price based on type (fixed or percent of base_price)
+  function calculatePrice(val, type, basePrice) {
+    const v = parseFloat(val) || 0
+    if (type === 'percent') {
+      return (parseFloat(basePrice) || 0) * (1 - v / 100)
+    }
+    return v
+  }
+
+  function formatPrice(val, type, basePrice) {
+    const price = calculatePrice(val, type, basePrice)
+    const formatted = price.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+    if (type === 'percent') {
+      return `${formatted} (${val}% off)`
+    }
+    return formatted
+  }
+
   // Add
   function openAdd() {
     setEditingId(null)
@@ -136,6 +273,20 @@ export default function ProductItemList() {
       item_type: product.item_type?._id || product.item_type,
       unit_price: product.unit_price || '',
       base_price: product.base_price || '',
+      website_price: product.website_price || '',
+      website_price_type: product.website_price_type || 'fixed',
+      msrp: product.msrp || '',
+      msrp_type: product.msrp_type || 'fixed',
+      distributor_price: product.distributor_price || '',
+      distributor_price_type: product.distributor_price_type || 'fixed',
+      retail_store_price: product.retail_store_price || '',
+      retail_store_price_type: product.retail_store_price_type || 'fixed',
+      manufacturing_cost: product.manufacturing_cost || '',
+      shipping_cost: product.shipping_cost || '',
+      duties: product.duties || '',
+      packaging: product.packaging || '',
+      labor: product.labor || '',
+      other_expenses: product.other_expenses || '',
       notes: product.notes || '',
       status: product.status,
     })
@@ -157,7 +308,21 @@ export default function ProductItemList() {
     } catch {}
     setSaving(true)
     try {
-      const payload = { ...form, unit_price: parseFloat(form.unit_price) || 0, base_price: parseFloat(form.base_price) || 0 }
+      const payload = {
+        ...form,
+        unit_price: parseFloat(form.unit_price) || 0,
+        base_price: parseFloat(form.base_price) || 0,
+        website_price: parseFloat(form.website_price) || 0,
+        msrp: parseFloat(form.msrp) || 0,
+        distributor_price: parseFloat(form.distributor_price) || 0,
+        retail_store_price: parseFloat(form.retail_store_price) || 0,
+        manufacturing_cost: parseFloat(form.manufacturing_cost) || 0,
+        shipping_cost: parseFloat(form.shipping_cost) || 0,
+        duties: parseFloat(form.duties) || 0,
+        packaging: parseFloat(form.packaging) || 0,
+        labor: parseFloat(form.labor) || 0,
+        other_expenses: parseFloat(form.other_expenses) || 0,
+      }
       if (editingId) {
         const updated = await api.updateProduct(editingId, payload)
         setProducts(prev => prev.map(p => p._id === editingId ? updated : p))
@@ -326,22 +491,19 @@ export default function ProductItemList() {
                 ) : (
                   <SortableContext items={filtered.slice((page - 1) * perPage, page * perPage).map(p => p._id)} strategy={verticalListSortingStrategy}>
                     {filtered.slice((page - 1) * perPage, page * perPage).map((product, index) => {
-                      const typeName = getTypeName(product)
-                      const style = getTypeStyle(typeName)
                       const isInactive = product.status === 'inactive'
                       return (
-                        <SortableRow key={product._id} id={product._id}>
-                          <td className="text-muted">{(page - 1) * perPage + index + 1}</td>
+                        <SortableRow key={product._id} product={product} expanded={expandedRows[product._id]} onToggleExpand={() => toggleExpand(product._id)} index={(page - 1) * perPage + index + 1}>
                           <td><span className="fw-semibold" style={{ color: isInactive ? '#94a3b8' : 'var(--text-primary)' }}>{product.name}</span></td>
                           <td>
-                            {product.unit_price > 0
-                              ? <span style={{ fontWeight: 700, fontSize: '.95rem' }}>${product.unit_price.toFixed(2)}</span>
+                            {Number(product.unit_price) > 0
+                              ? <span style={{ fontWeight: 700, fontSize: '.95rem' }}>${Number(product.unit_price).toFixed(2)}</span>
                               : <span style={{ color: 'var(--text-light)', fontStyle: 'italic', fontWeight: 500 }}>$0.00</span>
                             }
                           </td>
                           <td>
-                            {product.base_price > 0
-                              ? <span style={{ fontWeight: 700, fontSize: '.95rem' }}>${product.base_price.toFixed(2)}</span>
+                            {Number(product.base_price) > 0
+                              ? <span style={{ fontWeight: 700, fontSize: '.95rem' }}>${Number(product.base_price).toFixed(2)}</span>
                               : <span style={{ color: 'var(--text-light)', fontStyle: 'italic', fontWeight: 500 }}>$0.00</span>
                             }
                           </td>
@@ -383,73 +545,135 @@ export default function ProductItemList() {
         </div>
       </div>
 
-      {/* Add/Edit Modal */}
-      {showModal && (
-        <>
-          <div className="modal-backdrop fade show" style={{ zIndex: 1050 }}></div>
-          <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
-            <div className="modal-dialog modal-dialog-centered">
-              <div className="modal-content border-0 shadow" style={{ borderRadius: 16, overflow: 'hidden' }}>
-                <div className="modal-header text-white border-0" style={{ background: 'linear-gradient(135deg, #2563eb, #1e40af)' }}>
-                  <h5 className="modal-title fw-bold">
-                    <i className={`bi ${editingId ? 'bi-pencil' : 'bi-box-seam'} me-2`}></i>
-                    {editingId ? 'Edit Product' : 'Add New Product'}
-                  </h5>
-                  <button type="button" className="btn-close btn-close-white" onClick={() => setShowModal(false)}></button>
-                </div>
-                <div className="modal-body" style={{ padding: 24 }}>
-                  <div className="row g-3">
-                    <div className="col-12">
-                      <label className="form-label fw-medium">Product Name <span className="text-danger">*</span></label>
-                      <input type="text" className="form-control" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Enter product name" />
-                    </div>
-                    <div className="col-12">
-                      <label className="form-label fw-medium">Item Type <span className="text-danger">*</span></label>
-                      <select className="form-select" value={form.item_type} onChange={e => setForm(p => ({ ...p, item_type: e.target.value }))}>
-                        <option value="">Select type</option>
-                        {itemTypes.map(t => (
-                          <option key={t._id} value={t._id}>{t.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label fw-medium">Unit Price ($)</label>
-                      <div className="input-group">
-                        <span className="input-group-text"><i className="bi bi-currency-dollar"></i></span>
-                        <input type="number" className="form-control" value={form.unit_price} onChange={e => setForm(p => ({ ...p, unit_price: e.target.value }))} placeholder="0.00" step="0.01" />
-                      </div>
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label fw-medium">Base Price ($)</label>
-                      <div className="input-group">
-                        <span className="input-group-text"><i className="bi bi-currency-dollar"></i></span>
-                        <input type="number" className="form-control" value={form.base_price} onChange={e => setForm(p => ({ ...p, base_price: e.target.value }))} placeholder="0.00" step="0.01" />
-                      </div>
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label fw-medium">Status</label>
-                      <select className="form-select" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                      </select>
-                    </div>
-                    <div className="col-12">
-                      <label className="form-label fw-medium">Product Notes</label>
-                      <textarea className="form-control" rows="3" value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder="Enter product notes..."></textarea>
-                    </div>
-                  </div>
-                </div>
-                <div className="modal-footer border-0" style={{ padding: '16px 24px' }}>
-                  <button type="button" className="btn btn-outline-secondary rounded-pill" onClick={() => setShowModal(false)}>Cancel</button>
-                  <button type="button" className="btn btn-primary rounded-pill" onClick={handleSave} disabled={saving}>
-                    {saving ? <><span className="spinner-border spinner-border-sm me-2"></span>Saving...</> : <><i className="bi bi-check-lg me-1"></i> {editingId ? 'Update' : 'Save Product'}</>}
-                  </button>
-                </div>
-              </div>
+      {/* Add/Edit SlidePanel */}
+      <SlidePanel
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        title={editingId ? 'Edit Product' : 'Add New Product'}
+        width="600px"
+      >
+        <div className="row g-3">
+          <div className="col-12">
+            <label className="form-label fw-medium">Product Name <span className="text-danger">*</span></label>
+            <input type="text" className="form-control" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Enter product name" />
+          </div>
+          <div className="col-12">
+            <label className="form-label fw-medium">Item Type <span className="text-danger">*</span></label>
+            <select className="form-select" value={form.item_type || ''} onChange={e => setForm(p => ({ ...p, item_type: e.target.value }))}>
+              <option value="">Select type</option>
+              {itemTypes.map(t => (
+                <option key={t._id} value={t._id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="col-md-6">
+            <label className="form-label fw-medium">Unit Price ($)</label>
+            <div className="input-group">
+              <span className="input-group-text"><i className="bi bi-currency-dollar"></i></span>
+              <input type="number" className="form-control" value={form.unit_price} onChange={e => setForm(p => ({ ...p, unit_price: e.target.value }))} placeholder="0.00" step="0.01" />
             </div>
           </div>
-        </>
-      )}
+          <div className="col-md-6">
+            <label className="form-label fw-medium">Base Price ($)</label>
+            <div className="input-group">
+              <span className="input-group-text"><i className="bi bi-currency-dollar"></i></span>
+              <input type="number" className="form-control" value={form.base_price} onChange={e => setForm(p => ({ ...p, base_price: e.target.value }))} placeholder="0.00" step="0.01" />
+            </div>
+          </div>
+          <div className="col-md-6">
+            <label className="form-label fw-medium">Status</label>
+            <select className="form-select" value={form.status || 'active'} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+
+          <div className="col-12 mt-4">
+            <h6 className="fw-bold text-primary border-bottom pb-2 mb-3">Additional Pricing Levels</h6>
+            <div className="alert alert-info py-2 small mb-3">
+              <i className="bi bi-info-circle me-1"></i> These prices can be a fixed dollar amount or a percentage discount from the <strong>Base Price</strong>.
+            </div>
+          </div>
+
+          {[
+            { id: 'website_price', label: 'AIRfeet Website Price', value: form.website_price, type: form.website_price_type, icon: 'bi-globe' },
+            { id: 'msrp', label: 'MSRP (Retail Price)', value: form.msrp, type: form.msrp_type, icon: 'bi-tag' },
+            { id: 'distributor_price', label: 'Distributor Price', value: form.distributor_price, type: form.distributor_price_type, icon: 'bi-truck' },
+            { id: 'retail_store_price', label: 'Retail Store Price', value: form.retail_store_price, type: form.retail_store_price_type, icon: 'bi-shop' },
+          ].map(price => (
+            <div className="col-md-6" key={price.id}>
+              <label className="form-label fw-medium small text-muted mb-1">{price.label}</label>
+              <div className="input-group input-group-sm">
+                <span className="input-group-text"><i className={`bi ${price.icon}`}></i></span>
+                <input
+                  type="number"
+                  className="form-control"
+                  value={price.value}
+                  onChange={e => setForm(p => ({ ...p, [price.id]: e.target.value }))}
+                  placeholder="0.00"
+                  step="0.01"
+                />
+                <select
+                  className="form-select border-start-0"
+                  style={{ maxWidth: '85px' }}
+                  value={form[`${price.id}_type`] || 'fixed'}
+                  onChange={e => setForm(p => ({ ...p, [`${price.id}_type`]: e.target.value }))}
+                >
+                  <option value="fixed">$ Flat</option>
+                  <option value="percent">% Off</option>
+                </select>
+              </div>
+              {form[`${price.id}_type`] === 'percent' && form.base_price > 0 && (
+                <div className="form-text small text-info mt-1">
+                  Calculated: ${calculatePrice(price.value, 'percent', form.base_price).toFixed(2)}
+                </div>
+              )}
+            </div>
+          ))}
+          <div className="col-12 mt-3">
+            <label className="form-label fw-medium">Product Notes</label>
+            <textarea className="form-control" rows="3" value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder="Enter product notes..."></textarea>
+          </div>
+
+          <div className="col-12 mt-4">
+            <h6 className="fw-bold text-danger border-bottom pb-2 mb-3"><i className="bi bi-calculator me-2"></i>Cost Tracking (Per Unit)</h6>
+            <div className="alert alert-warning py-2 small mb-3">
+              <i className="bi bi-info-circle me-1"></i> These costs help calculate true profit margins across all pricing levels.
+            </div>
+          </div>
+
+          {[
+            { id: 'manufacturing_cost', label: 'Manufacturing Cost', icon: 'bi-hammer' },
+            { id: 'shipping_cost', label: 'Inbound Shipping', icon: 'bi-truck' },
+            { id: 'duties', label: 'Duties & Tariffs', icon: 'bi-globe' },
+            { id: 'packaging', label: 'Packaging Materials', icon: 'bi-box' },
+            { id: 'labor', label: 'Handling Labor', icon: 'bi-people' },
+            { id: 'other_expenses', label: 'Other Variable Expenses', icon: 'bi-receipt' },
+          ].map(cost => (
+            <div className="col-md-4" key={cost.id}>
+              <label className="form-label fw-medium small text-muted mb-1">{cost.label}</label>
+              <div className="input-group input-group-sm">
+                <span className="input-group-text"><i className={`bi ${cost.icon}`}></i></span>
+                <input
+                  type="number"
+                  className="form-control"
+                  value={form[cost.id]}
+                  onChange={e => setForm(p => ({ ...p, [cost.id]: e.target.value }))}
+                  placeholder="0.00"
+                  step="0.01"
+                />
+              </div>
+            </div>
+          ))}
+
+          <div className="col-12 mt-4 d-flex gap-2">
+            <button type="button" className="btn btn-primary flex-grow-1" onClick={handleSave} disabled={saving}>
+              {saving ? <><span className="spinner-border spinner-border-sm me-2"></span>Saving...</> : <><i className="bi bi-check-lg me-1"></i> {editingId ? 'Update Product' : 'Save Product'}</>}
+            </button>
+            <button type="button" className="btn btn-outline-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+          </div>
+        </div>
+      </SlidePanel>
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && deleteTarget && (

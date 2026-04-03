@@ -4,6 +4,8 @@ import toast from 'react-hot-toast'
 import html2pdf from 'html2pdf.js'
 import { api } from '../../lib/api'
 import Pagination from '../../components/Pagination'
+import PageChartHeader from '../../components/PageChartHeader'
+import SlidePanel from '../../components/SlidePanel'
 
 export default function InvoiceList() {
   const [invoices, setInvoices] = useState([])
@@ -16,6 +18,7 @@ export default function InvoiceList() {
   const [years, setYears] = useState([])
   const [deleteInv, setDeleteInv] = useState(null)
   const [viewInv, setViewInv] = useState(null)
+  const [panelOpen, setPanelOpen] = useState(false)
   const [viewLoading, setViewLoading] = useState(false)
   const [viewMode, setViewMode] = useState('invoice') // 'invoice' or 'packing'
   const [showEmailModal, setShowEmailModal] = useState(false)
@@ -49,6 +52,9 @@ export default function InvoiceList() {
   const [showCreate, setShowCreate] = useState(false)
   const [editInv, setEditInv] = useState(null)
   const [customers, setCustomers] = useState([])
+  const [filterPaid, setFilterPaid] = useState('') // '' | 'unpaid'
+  const [topCustomers, setTopCustomers] = useState({ topByCount: [], topByOutstanding: [] })
+  const [analyticsLoading, setAnalyticsLoading] = useState(true)
   const [form, setForm] = useState({})
   const emptyForm = { company_id: '', invoice_number: '', invoice_date: '', po_number: '', po_date: '', due_date: '', total_qty: '', net_amount: '', shipping_costs: '', sales_tax_type: 'N', sales_tax_percentage: '', sales_tax_amount: '', po_notes: '', project: '', shipinfo_notes: '', airfeet_notes: '', cust_terms: '', customer_FOB: '', cust_ship: '', cust_ship_via: '', cust_project: '', credit_card_notes: '', inv_quote_status: 0, paid_value: '', paid_date: '', test_check: 0, cc_charge: 0, cc_per: '', cc_amt: '', drop_ship: 0, billing_contact: '', shipping_contact: '', billing_address: '', shipping_address: '', drop_company_name: '', bci_name: '', bci_phone: '', bci_email: '', sci_name: '', sci_phone: '', sci_email: '', bcaddr_street: '', bcaddr_city: '', bcaddr_state: '', bcaddr_zip: '', bcaddr_country: '', scaddr_street: '', scaddr_city: '', scaddr_state: '', scaddr_zip: '', scaddr_country: '' }
   const [invLineItems, setInvLineItems] = useState([])
@@ -67,7 +73,7 @@ export default function InvoiceList() {
     } catch { setCustContacts([]); setCustAddresses([]) }
   }
 
-  useEffect(() => { fetchYears(); fetchCustomers() }, [])
+  useEffect(() => { fetchYears(); fetchCustomers(); fetchAnalytics() }, [])
   useEffect(() => { fetchData() }, [year])
 
   async function fetchYears() {
@@ -75,6 +81,15 @@ export default function InvoiceList() {
       const yrs = await api.getInvoiceYears()
       setYears(yrs || [])
     } catch {}
+  }
+
+  async function fetchAnalytics() {
+    setAnalyticsLoading(true)
+    try {
+      const data = await api.getInvoiceTopCustomers()
+      setTopCustomers(data || { topByCount: [], topByOutstanding: [] })
+    } catch {}
+    setAnalyticsLoading(false)
   }
 
   async function fetchData() {
@@ -462,20 +477,20 @@ export default function InvoiceList() {
     } catch (err) { toast.error(err.message) }
   }
 
-  async function openViewInvoice(inv, mode = 'invoice') {
-    setViewMode(mode)
+  async function openView(inv, mode = 'invoice') {
     setViewLoading(true)
+    setViewMode(mode)
+    setViewInv(inv) // Set immediately for UI feedback
+    setPanelOpen(true)
     try {
       const data = await api.getInvoiceView(inv._id)
       setViewInv(data)
-    } catch (err) {
-      toast.error('Failed to load: ' + err.message)
-    }
+    } catch (err) { toast.error(err.message) }
     setViewLoading(false)
   }
 
   function printInvoice() {
-    const content = document.getElementById('invoice-print-area')
+    const content = document.getElementById('invoice-capture')
     if (!content) return
     const styles = `
       body { font-family: Arial, sans-serif; font-size: 13px; color: #333; margin: 20px; }
@@ -493,7 +508,7 @@ export default function InvoiceList() {
   }
 
   function downloadInvoice() {
-    const content = document.getElementById('invoice-print-area')
+    const content = document.getElementById('invoice-capture')
     if (!content) return
     html2pdf().set({
       margin: [10, 10, 10, 10],
@@ -539,6 +554,8 @@ export default function InvoiceList() {
   }
 
   const filtered = invoices.filter(p => {
+    if (filterPaid === 'unpaid' && p.paid_value === 'PAID') return false
+    if (filterPaid === 'paid' && p.paid_value !== 'PAID') return false
     if (!search) return true
     const s = search.toLowerCase()
     return p.company_name?.toLowerCase().includes(s) ||
@@ -548,47 +565,101 @@ export default function InvoiceList() {
   })
   const paginated = filtered.slice((page - 1) * perPage, page * perPage)
 
-  return (
-    <div>
-      {/* Header */}
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <div>
-          <nav aria-label="breadcrumb">
-            <ol className="breadcrumb mb-1">
-              <li className="breadcrumb-item"><Link to="/dashboard"><i className="bi bi-house-door"></i></Link></li>
-              <li className="breadcrumb-item active">Invoices</li>
-            </ol>
-          </nav>
-          <h3 className="mb-0">Invoices</h3>
-        </div>
-        <button className="btn btn-primary" onClick={openCreate}>
-          <i className="bi bi-plus-lg me-1"></i> New Invoice
-        </button>
-      </div>
+  const headerStats = [
+    { 
+      label: 'Total Invoices', 
+      value: stats.total, 
+      icon: 'bi-receipt', 
+      bg: '#eff6ff', 
+      color: '#2563eb',
+      onClick: () => { setFilterPaid(''); setPage(1); }
+    },
+    { 
+      label: 'Paid Invoices', 
+      value: stats.paid, 
+      icon: 'bi-check-circle-fill', 
+      bg: '#ecfdf5', 
+      color: '#10b981',
+      onClick: () => { setFilterPaid('paid'); setPage(1); }
+    },
+    { 
+      label: 'Unpaid Invoices', 
+      value: stats.unpaid, 
+      icon: 'bi-exclamation-circle-fill', 
+      bg: '#fef2f2', 
+      color: '#ef4444',
+      onClick: () => { setFilterPaid('unpaid'); setPage(1); }
+    },
+    { 
+      label: 'Total Volume', 
+      value: fmtMoney(stats.totalAmount), 
+      icon: 'bi-currency-dollar', 
+      bg: '#fff7ed', 
+      color: '#f59e0b'
+    },
+  ]
 
-      {/* Stats */}
-      <div className="row g-3 mb-4">
-        {[
-          { value: stats.total, label: 'Total Invoices', icon: 'bi-receipt', bg: '#eff6ff', color: '#2563eb' },
-          { value: stats.paid, label: 'Paid', icon: 'bi-check-circle-fill', bg: '#ecfdf5', color: '#10b981' },
-          { value: stats.unpaid, label: 'Unpaid', icon: 'bi-exclamation-circle-fill', bg: '#fef2f2', color: '#ef4444' },
-          { value: fmtMoney(stats.totalAmount), label: 'Total Amount', icon: 'bi-currency-dollar', bg: '#fff7ed', color: '#f59e0b', raw: true },
-        ].map((stat, i) => (
-          <div className="col-md-3 col-6" key={i}>
-            <div className="stat-card">
-              <div className="d-flex align-items-center gap-3">
-                <div className="stat-icon" style={{ background: stat.bg, color: stat.color }}>
-                  <i className={`bi ${stat.icon}`}></i>
-                </div>
-                <div>
-                  <div className="stat-value">{loading ? '-' : stat.value}</div>
-                  <div className="stat-label">{stat.label}</div>
-                </div>
-              </div>
-            </div>
+  const chartData = {
+    labels: ['Paid', 'Unpaid', 'Shipped'],
+    onSliceClick: (index) => {
+      const statuses = ['paid', 'unpaid', ''];
+      setFilterPaid(statuses[index]);
+      setPage(1);
+    },
+    datasets: [{
+      data: [stats.paid || 0, stats.unpaid || 0, stats.shipped || 0],
+      backgroundColor: ['#10b981', '#ef4444', '#3b82f6'],
+      hoverOffset: 4,
+      borderRadius: 5,
+    }]
+  }
+
+  const breadcrumbs = [
+    { label: 'Dashboard', link: '/dashboard' },
+    { label: 'Invoices' }
+  ]
+
+  return (
+    <div className="pb-5">
+      <PageChartHeader
+        title="Invoices Management"
+        subtitle="Track sales, payments, and shipments"
+        breadcrumbs={breadcrumbs}
+        stats={headerStats}
+        chartData={chartData}
+        chartType="doughnut"
+        actions={
+          <div className="d-flex gap-2">
+            <select className="form-select form-select-sm shadow-sm" style={{ width: 140 }} value={year} onChange={e => { setYear(e.target.value); setPage(1) }}>
+              <option value="">All Years</option>
+              {years.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+            <button className="btn btn-sm btn-primary shadow-sm px-3" onClick={openCreate} style={{ fontWeight: 600 }}>
+              <i className="bi bi-plus-lg me-1"></i> New Invoice
+            </button>
           </div>
-        ))}
-      </div>
+        }
+      />
+
+      {/* Active Filter Badge */}
+      {filterPaid && (
+        <div className="mb-3">
+          <span className="badge rounded-pill px-3 py-2" style={{
+            background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', fontSize: 13
+          }}>
+            <i className="bi bi-funnel-fill me-2" style={{ fontSize: 11 }}></i>
+            Showing: {filterPaid === 'paid' ? 'Paid' : 'Unpaid'} Invoices ({filtered.length})
+            <button
+              className="btn btn-sm p-0 ms-2"
+              style={{ color: '#ef4444', background: 'none', border: 'none', lineHeight: 1 }}
+              onClick={() => { setFilterPaid(''); setPage(1) }}
+              title="Clear filter"
+            >
+              <i className="bi bi-x-circle-fill"></i>
+            </button>
+          </span>
+        </div>
+      )}
 
       {/* Search & Year Filter */}
       <div className="card border-0 shadow-sm rounded-4 mb-3">
@@ -695,10 +766,10 @@ export default function InvoiceList() {
                       <button className="btn btn-sm" title="Copy" onClick={() => handleCopy(inv)} style={{ padding: '2px 6px', background: '#e0e0e0', border: '1px solid #ccc', color: '#333' }}>
                         <i className="bi bi-copy"></i>
                       </button>
-                      <button className="btn btn-sm" title="View Invoice" onClick={() => openViewInvoice(inv, 'invoice')} style={{ padding: '2px 6px', background: '#e0e0e0', border: '1px solid #ccc', color: '#333' }}>
+                      <button className="btn btn-sm" title="View Invoice" onClick={() => openView(inv, 'invoice')} style={{ padding: '2px 6px', background: '#e0e0e0', border: '1px solid #ccc', color: '#333' }}>
                         <i className="bi bi-eye"></i>
                       </button>
-                      <button className="btn btn-sm" title="Packing Slip" onClick={() => openViewInvoice(inv, 'packing')} style={{ padding: '2px 6px', background: '#e0e0e0', border: '1px solid #ccc', color: '#333' }}>
+                      <button className="btn btn-sm" title="Packing Slip" onClick={() => openView(inv, 'packing')} style={{ padding: '2px 6px', background: '#e0e0e0', border: '1px solid #ccc', color: '#333' }}>
                         <i className="bi bi-box-seam"></i>
                       </button>
                       <button className="btn btn-sm" title="Customer PO"
@@ -743,6 +814,107 @@ export default function InvoiceList() {
               onPageChange={setPage} onPerPageChange={v => { setPerPage(v); setPage(1) }} />
           </div>
         )}
+      </div>
+
+      {/* ─── Invoice Insights ─── */}
+      <div className="row g-3 mt-1">
+        {/* Card A: Most Invoices */}
+        <div className="col-12 col-lg-6">
+          <div className="card border-0 shadow-sm rounded-4 h-100">
+            <div className="card-header border-0 py-3 px-4" style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', borderRadius: '16px 16px 0 0' }}>
+              <div className="d-flex align-items-center gap-2">
+                <i className="bi bi-bar-chart-fill text-white" style={{ fontSize: '1.1rem' }}></i>
+                <h6 className="fw-bold mb-0 text-white">Customers with Most Invoices</h6>
+              </div>
+            </div>
+            <div className="card-body p-0">
+              {analyticsLoading ? (
+                <div className="text-center py-4"><div className="spinner-border spinner-border-sm text-primary"></div></div>
+              ) : topCustomers.topByCount.length === 0 ? (
+                <div className="text-center py-4 text-muted small">No data available</div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
+                    <thead className="bg-light">
+                      <tr>
+                        <th className="ps-4" style={{ width: 40 }}>#</th>
+                        <th>Customer</th>
+                        <th className="text-center">Invoices</th>
+                        <th className="text-end pe-4">Total Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topCustomers.topByCount.map((r, i) => (
+                        <tr key={i}>
+                          <td className="ps-4">
+                            <span className="badge rounded-circle d-inline-flex align-items-center justify-content-center"
+                              style={{ width: 24, height: 24, fontSize: 11, background: i === 0 ? '#fbbf24' : i === 1 ? '#94a3b8' : i === 2 ? '#f97316' : '#e2e8f0', color: i < 3 ? '#fff' : '#64748b' }}>
+                              {i + 1}
+                            </span>
+                          </td>
+                          <td className="fw-semibold text-truncate" style={{ maxWidth: 200 }}>{r.company_name || '-'}</td>
+                          <td className="text-center">
+                            <span className="badge bg-primary-subtle text-primary rounded-pill px-3">{r.invoice_count}</span>
+                          </td>
+                          <td className="text-end pe-4 fw-semibold">{fmtMoney(r.total_amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Card B: Highest Outstanding */}
+        <div className="col-12 col-lg-6">
+          <div className="card border-0 shadow-sm rounded-4 h-100">
+            <div className="card-header border-0 py-3 px-4" style={{ background: 'linear-gradient(135deg, #ef4444, #b91c1c)', borderRadius: '16px 16px 0 0' }}>
+              <div className="d-flex align-items-center gap-2">
+                <i className="bi bi-exclamation-triangle-fill text-white" style={{ fontSize: '1.1rem' }}></i>
+                <h6 className="fw-bold mb-0 text-white">Highest Outstanding Balances</h6>
+              </div>
+            </div>
+            <div className="card-body p-0">
+              {analyticsLoading ? (
+                <div className="text-center py-4"><div className="spinner-border spinner-border-sm text-danger"></div></div>
+              ) : topCustomers.topByOutstanding.length === 0 ? (
+                <div className="text-center py-4 text-muted small">No outstanding balances</div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
+                    <thead className="bg-light">
+                      <tr>
+                        <th className="ps-4" style={{ width: 40 }}>#</th>
+                        <th>Customer</th>
+                        <th className="text-center">Unpaid</th>
+                        <th className="text-end pe-4">Outstanding</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topCustomers.topByOutstanding.map((r, i) => (
+                        <tr key={i}>
+                          <td className="ps-4">
+                            <span className="badge rounded-circle d-inline-flex align-items-center justify-content-center"
+                              style={{ width: 24, height: 24, fontSize: 11, background: i === 0 ? '#ef4444' : i === 1 ? '#f97316' : i === 2 ? '#f59e0b' : '#e2e8f0', color: i < 3 ? '#fff' : '#64748b' }}>
+                              {i + 1}
+                            </span>
+                          </td>
+                          <td className="fw-semibold text-truncate" style={{ maxWidth: 200 }}>{r.company_name || '-'}</td>
+                          <td className="text-center">
+                            <span className="badge bg-danger-subtle text-danger rounded-pill px-3">{r.unpaid_count}</span>
+                          </td>
+                          <td className="text-end pe-4 fw-bold" style={{ color: '#ef4444' }}>{fmtMoney(r.outstanding_amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Create/Edit Invoice Modal */}
@@ -1013,198 +1185,170 @@ export default function InvoiceList() {
         </div>
       </>)}
 
-      {/* View Invoice Modal */}
-      {(viewInv || viewLoading) && (<>
-        <div className="modal-backdrop fade show"></div>
-        <div className="modal fade show d-block" tabIndex="-1">
-          <div className="modal-dialog modal-lg modal-dialog-scrollable">
-            <div className="modal-content border-0 shadow">
-              <div className="modal-header border-0 pb-0 pt-2 pe-2">
-                <div></div>
-                <button type="button" className="btn-close" onClick={() => setViewInv(null)}></button>
-              </div>
-              <div className="modal-body pt-0" style={{ position: 'relative', fontSize: 13 }}>
-                {viewLoading ? (
-                  <div className="text-center py-5"><div className="spinner-border text-primary"></div><p className="mt-2 text-muted">Loading invoice...</p></div>
-                ) : viewInv && (
-                  <div id="invoice-print-area" style={{ position: 'relative' }}>
-                    {/* PAID watermark */}
-                    {viewInv.paid_value === 'PAID' && (
-                      <div style={{ position: 'absolute', top: '35%', left: '20%', fontSize: 150, color: 'rgba(255,0,0,0.15)', transform: 'rotate(-30deg)', fontWeight: 'bold', pointerEvents: 'none', zIndex: 0 }}>
-                        <div>PAID</div>
-                        {viewInv.paid_date && <div style={{ fontSize: 25, textAlign: 'center' }}>{viewInv.paid_date}</div>}
-                      </div>
-                    )}
+      {/* Invoice Detail Slide Panel */}
+      <SlidePanel
+        isOpen={panelOpen}
+        onClose={() => { setPanelOpen(false); setViewInv(null); }}
+        title={viewInv ? `${viewMode === 'packing' ? 'Packing Slip' : 'Invoice'} #${viewInv.invoice_number}` : 'Invoice Details'}
+        width="800px"
+      >
+        {viewLoading ? (
+          <div className="text-center py-5">
+            <div className="spinner-border text-primary"></div>
+            <p className="mt-2 text-muted">Loading invoice details...</p>
+          </div>
+        ) : viewInv ? (
+          <div className="p-1">
+            {/* View Mode Tabs */}
+            <div className="d-flex mb-4 bg-light p-1 rounded-3" style={{ width: 'fit-content' }}>
+              <button
+                className={`btn btn-sm px-3 rounded-2 ${viewMode === 'invoice' ? 'btn-primary shadow-sm' : 'btn-link text-dark text-decoration-none'}`}
+                onClick={() => setViewMode('invoice')}
+              >
+                Invoice View
+              </button>
+              <button
+                className={`btn btn-sm px-3 rounded-2 ${viewMode === 'packing' ? 'btn-primary shadow-sm' : 'btn-link text-dark text-decoration-none'}`}
+                onClick={() => setViewMode('packing')}
+              >
+                Packing Slip
+              </button>
+            </div>
 
-                    {/* HEADER: Logo + Company + Phone/Email + Invoice label + Date/Inv#/PO# */}
-                    <div style={{ display: 'flex', marginBottom: 16 }}>
-                      <div style={{ width: '25%', textAlign: 'center' }}>
-                        <img src="https://staging.stallioni.com/assets/images/logo_fleet.png" alt="Airfeet" style={{ width: 110, marginBottom: 4 }} crossOrigin="anonymous" />
-                        <div style={{ fontSize: 10, fontStyle: 'italic', color: '#555' }}>"It's like walking on air"</div>
-                      </div>
-                      <div style={{ width: '25%', fontSize: 13, lineHeight: 1.5 }}>
-                        <div style={{ fontWeight: 'bold' }}>Airfeet LLC</div>
-                        <div>2346 S. Lynhurst Dr</div>
-                        <div>Suite 701</div>
-                        <div>Indianapolis Indiana 46241</div>
-                      </div>
-                      <div style={{ width: '20%', fontSize: 13, lineHeight: 1.5 }}>
-                        <div>317-965-5212</div>
-                        <div><u>info@myairfeet.com</u></div>
-                        <div><u>www.myairfeet.com</u></div>
-                      </div>
-                      <div style={{ width: '30%' }}>
-                        <div style={{ background: 'blue', color: '#fff', textAlign: 'center', padding: '10px', fontWeight: 'bold', fontSize: 16, marginBottom: 4 }}>
-                          {viewMode === 'packing' ? 'Packing Slip' : (viewInv.inv_quote_status === 1 ? 'Quote' : 'Invoice')}
-                        </div>
-                        <table className="table table-bordered table-sm mb-0" style={{ fontSize: 11 }}>
-                          <tbody>
-                            <tr><th>Date</th><th>{viewMode === 'packing' ? 'Invoice' : (viewInv.inv_quote_status === 1 ? 'Quote' : 'Invoice')} #</th></tr>
-                            <tr><td>{fmtDate(viewInv.invoice_date)}</td><td>{viewInv.inv_quote_status === 1 ? 'Q-' : ''}{viewInv.invoice_number || '-'}</td></tr>
-                            <tr><td>PO #</td><td>{viewInv.po_number || '-'}</td></tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* Bill To / Ship To */}
-                    <div style={{ display: 'flex', gap: 0, marginBottom: 16 }}>
-                      <div style={{ flex: 1 }}>
-                        <table className="table table-bordered table-sm mb-0">
-                          <thead><tr><th className="bg-light">Bill To</th></tr></thead>
-                          <tbody><tr><td style={{ padding: '10px 12px', minHeight: 80 }}>
-                            <div style={{ fontWeight: 'bold', marginBottom: 4 }}>{viewInv.company_name || '-'}</div>
-                            <div>{formatAddress(viewInv.billingAddr)}</div>
-                          </td></tr></tbody>
-                        </table>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <table className="table table-bordered table-sm mb-0">
-                          <thead><tr><th className="bg-light">Ship To</th></tr></thead>
-                          <tbody><tr><td style={{ padding: '10px 12px', minHeight: 80 }}>
-                            <div style={{ fontWeight: 'bold', marginBottom: 4 }}>{viewInv.company_name || '-'}</div>
-                            <div>{formatAddress(viewInv.shippingAddr)}</div>
-                          </td></tr></tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* Terms / Rep / Ship / ShipAcct# / Via / FOB / Project */}
-                    <table className="table table-bordered table-sm mb-3">
-                      <thead>
-                        <tr>
-                          <th className="bg-light text-center">Terms</th>
-                          <th className="bg-light text-center">Rep</th>
-                          <th className="bg-light text-center">Ship</th>
-                          <th className="bg-light text-center">ShipAcct #</th>
-                          <th className="bg-light text-center">Via</th>
-                          <th className="bg-light text-center">F.O.B.</th>
-                          <th className="bg-light text-center">Project</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td className="text-center">{viewInv.cust_terms || ''}</td>
-                          <td className="text-center">{viewInv.rep_info || ''}</td>
-                          <td className="text-center">{viewInv.cust_ship || ''}</td>
-                          <td className="text-center">{viewInv.shipinfo_notes || ''}</td>
-                          <td className="text-center">{viewInv.cust_ship_via || ''}</td>
-                          <td className="text-center">{viewInv.customer_FOB || ''}</td>
-                          <td className="text-center">{viewInv.cust_project || ''}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-
-                    {/* Line Items */}
-                    <table className="table table-bordered table-sm mb-3">
-                      <thead>
-                        <tr className="bg-light">
-                          <th style={{ width: '5%' }} className="text-center">Line</th>
-                          <th style={{ width: '12%' }}>Item Code</th>
-                          <th style={{ width: '33%' }}>Description</th>
-                          <th style={{ width: '12%' }} className="text-center">Back Order QTY</th>
-                          <th style={{ width: '12%' }} className="text-center">Shipped QTY</th>
-                          <th style={{ width: '12%' }} className="text-center">Price Each</th>
-                          <th style={{ width: '14%' }} className="text-center">Amount ($)</th>
-                        </tr>
-                      </thead>
-                      <tbody style={{ textAlign: 'center' }}>
-                        {viewInv.items && viewInv.items.length > 0 ? (() => {
-                          let totalAmt = 0
-                          const rows = viewInv.items.filter(it => it.item_name || it.po_item_name || it.inv_item_name).map((item, i) => {
-                            const name = item.inv_item_name || item.item_name || item.po_item_name || '-'
-                            const sizeName = item.item_size_name || item.size_name || ''
-                            const desc = sizeName && sizeName !== 'Qty' && sizeName !== 'Null' ? `${name} ${sizeName.toUpperCase()}` : name
-                            const sku = item.item_sku || ''
-                            const qty = item.size_qty || item.qty || 0
-                            const cost = parseFloat(item.item_unit_cost || item.unit_cost) || 0
-                            const bo = item.bo_option === 'yes'
-                            const boQty = bo ? qty : ''
-                            const shipQty = bo ? '' : qty
-                            const amt = bo ? 0 : qty * cost
-                            totalAmt += amt
-                            return (
-                              <tr key={i}>
-                                <td>{i + 1}</td>
-                                <td style={{ textAlign: 'left' }}>{sku}</td>
-                                <td style={{ textAlign: 'left' }}>{desc}</td>
-                                <td>{boQty}</td>
-                                <td>{shipQty}</td>
-                                <td>{viewMode === 'packing' ? '0.00' : cost.toFixed(2)}</td>
-                                <td>{viewMode === 'packing' ? '0.00' : amt.toFixed(2)}</td>
-                              </tr>
-                            )
-                          })
-                          rows.push(
-                            <tr key="total">
-                              <td colSpan="6" style={{ textAlign: 'right', fontWeight: 'bold' }}>TOTAL</td>
-                              <td style={{ fontWeight: 'bold' }}>{viewMode === 'packing' ? '0.00' : totalAmt.toFixed(2)} (USD)</td>
-                            </tr>
-                          )
-                          return rows
-                        })() : (
-                          <tr><td colSpan="7" className="text-muted py-2">No line items</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-
-                    {/* Phone / Email */}
-                    <table className="table table-bordered table-sm mb-3" style={{ width: '50%' }}>
-                      <tbody>
-                        <tr><td><b>Phone #</b></td><td><b>Email</b></td></tr>
-                        <tr><td>317-965-5212</td><td>info@myairfeet.com</td></tr>
-                      </tbody>
-                    </table>
-
-                    {/* Notes */}
-                    {viewInv.po_notes && (
-                      <table className="table table-bordered table-sm mb-3" style={{ width: '50%' }}>
-                        <tbody>
-                          <tr><td><b>Notes</b></td></tr>
-                          <tr><td>{viewInv.po_notes}</td></tr>
-                        </tbody>
-                      </table>
-                    )}
+            <div id="invoice-capture" className="bg-white p-4 border rounded shadow-sm" style={{ minWidth: 700, fontSize: 13 }}>
+               {/* Invoice Header */}
+               <div className="d-flex justify-content-between mb-4 border-bottom pb-4">
+                  <div>
+                    <img src="https://staging.stallioni.com/assets/images/logo_fleet.png" alt="Airfeet" style={{ width: 140, marginBottom: 8 }} crossOrigin="anonymous" />
+                    <div className="fw-bold fs-5">Airfeet LLC</div>
+                    <div className="text-muted">2346 S. Lynhurst Dr, Suite 701<br/>Indianapolis, IN 46241</div>
                   </div>
-                )}
-              </div>
-              {viewInv && (
-                <div className="modal-footer border-0 justify-content-center pb-4">
-                  <button className="btn btn-lg px-4" style={{ background: '#f0ad4e', color: '#fff', borderRadius: 4 }} onClick={downloadInvoice}>
-                    Download <i className="bi bi-download ms-1"></i>
-                  </button>
-                  <button className="btn btn-lg btn-primary px-4" style={{ borderRadius: 4 }} onClick={printInvoice}>
-                    Print <i className="bi bi-printer ms-1"></i>
-                  </button>
-                  <button className="btn btn-lg px-4" style={{ background: '#337ab7', color: '#fff', borderRadius: 4 }} onClick={openEmailModal}>
-                    Email <i className="bi bi-envelope ms-1"></i>
-                  </button>
-                </div>
-              )}
+                  <div className="text-end">
+                    <div className={`p-3 rounded-3 text-white fw-bold mb-3 ${viewMode === 'packing' ? 'bg-info' : 'bg-primary'}`} style={{ minWidth: 200, fontSize: 20 }}>
+                      {viewMode === 'packing' ? 'PACKING SLIP' : (viewInv.inv_quote_status === 1 ? 'QUOTE' : 'INVOICE')}
+                    </div>
+                    <div className="small text-muted">Date: <span className="text-dark fw-bold">{fmtDate(viewInv.invoice_date)}</span></div>
+                    <div className="small text-muted">Number: <span className="text-dark fw-bold">{viewInv.inv_quote_status === 1 ? 'Q-' : ''}{viewInv.invoice_number}</span></div>
+                    <div className="small text-muted">PO #: <span className="text-dark fw-bold">{viewInv.po_number || 'N/A'}</span></div>
+                  </div>
+               </div>
+
+               {/* Addresses */}
+               <div className="row g-4 mb-4">
+                  <div className="col-6">
+                    <div className="bg-light p-2 px-3 rounded-t fw-bold border-bottom small text-uppercase">Bill To</div>
+                    <div className="p-3 border rounded-b bg-white border-top-0">
+                      <div className="fw-bold mb-1">{viewInv.company_name}</div>
+                      <div className="text-muted small">{formatAddress(viewInv.billingAddr)}</div>
+                    </div>
+                  </div>
+                  <div className="col-6">
+                    <div className="bg-light p-2 px-3 rounded-t fw-bold border-bottom small text-uppercase">Ship To</div>
+                    <div className="p-3 border rounded-b bg-white border-top-0">
+                      <div className="fw-bold mb-1">{viewInv.company_name}</div>
+                      <div className="text-muted small">{formatAddress(viewInv.shippingAddr)}</div>
+                    </div>
+                  </div>
+               </div>
+
+               {/* Order Info */}
+               <div className="table-responsive mb-4">
+                 <table className="table table-sm table-bordered mb-0 small">
+                   <thead className="bg-light">
+                     <tr>
+                       <th className="text-center">Terms</th>
+                       <th className="text-center">Rep</th>
+                       <th className="text-center">Ship</th>
+                       <th className="text-center">Via</th>
+                       <th className="text-center">F.O.B.</th>
+                     </tr>
+                   </thead>
+                   <tbody className="text-center">
+                     <tr>
+                       <td>{viewInv.cust_terms || '-'}</td>
+                       <td>{viewInv.rep_info || '-'}</td>
+                       <td>{viewInv.cust_ship || '-'}</td>
+                       <td>{viewInv.cust_ship_via || '-'}</td>
+                       <td>{viewInv.customer_FOB || '-'}</td>
+                     </tr>
+                   </tbody>
+                 </table>
+               </div>
+
+               {/* Items Table */}
+               <table className="table table-hover border small mb-4">
+                 <thead className="bg-light">
+                   <tr>
+                     <th style={{ width: 50 }} className="text-center">Line</th>
+                     <th>Item Code</th>
+                     <th>Description</th>
+                     <th className="text-center">Shipped</th>
+                     <th className="text-end">Price</th>
+                     <th className="text-end">Amount</th>
+                   </tr>
+                 </thead>
+                 <tbody>
+                   {viewInv.items?.filter(it => it.inv_item_name || it.item_name).map((item, i) => {
+                     const qty = item.size_qty || item.qty || 0
+                     const cost = parseFloat(item.item_unit_cost || item.unit_cost) || 0
+                     const amt = qty * cost
+                     return (
+                       <tr key={i}>
+                         <td className="text-center">{i+1}</td>
+                         <td className="fw-medium">{item.item_sku}</td>
+                         <td>{item.inv_item_name || item.item_name}</td>
+                         <td className="text-center">{qty}</td>
+                         <td className="text-end">{viewMode === 'packing' ? '-' : `$${cost.toFixed(2)}`}</td>
+                         <td className="text-end fw-bold">{viewMode === 'packing' ? '-' : `$${amt.toFixed(2)}`}</td>
+                       </tr>
+                     )
+                   })}
+                 </tbody>
+                 {viewMode !== 'packing' && (
+                   <tfoot className="border-top-2">
+                     <tr className="bg-light">
+                       <td colSpan="5" className="text-end fw-bold">TOTAL</td>
+                       <td className="text-end fw-bold text-primary fs-6">${(viewInv.items?.reduce((s, it) => s + ((it.size_qty || it.qty || 0) * (parseFloat(it.item_unit_cost || it.unit_cost) || 0)), 0) || 0).toFixed(2)}</td>
+                     </tr>
+                   </tfoot>
+                 )}
+               </table>
+
+               <div className="row">
+                 <div className="col-6">
+                   {viewInv.po_notes && (
+                     <div className="mt-3">
+                       <div className="fw-bold small text-muted text-uppercase mb-1">Notes</div>
+                       <div className="p-3 bg-light rounded small border">{viewInv.po_notes}</div>
+                     </div>
+                   )}
+                 </div>
+                 <div className="col-6 text-end">
+                    <div className="mt-4 pt-4 border-top">
+                      <p className="mb-0 text-muted small">Phone: 317-965-5212</p>
+                      <p className="mb-0 text-muted small">Email: info@myairfeet.com</p>
+                    </div>
+                 </div>
+               </div>
+            </div>
+
+            {/* Panel Actions */}
+            <div className="d-flex justify-content-end gap-2 mt-4">
+              <button className="btn btn-outline-primary" onClick={printInvoice}>
+                <i className="bi bi-printer me-1"></i> Print
+              </button>
+              <button className="btn btn-outline-warning" onClick={downloadInvoice}>
+                <i className="bi bi-download me-1"></i> Download PDF
+              </button>
+              <button className="btn btn-primary" onClick={openEmailModal}>
+                <i className="bi bi-envelope me-1"></i> Email
+              </button>
             </div>
           </div>
-        </div>
-      </>)}
+        ) : (
+          <div className="text-center py-5 text-muted">Select an invoice to view details</div>
+        )}
+      </SlidePanel>
 
       {/* Edit Commission Modal */}
       {(editCommInv || editCommLoading) && (<>

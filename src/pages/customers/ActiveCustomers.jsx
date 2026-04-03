@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../../lib/api'
 import Pagination from '../../components/Pagination'
+import PageChartHeader from '../../components/PageChartHeader'
+import SlidePanel from '../../components/SlidePanel'
+import CustomerDetailView from '../../components/CustomerDetailView'
 
 const avatarColors = ['#2563eb', '#7c3aed', '#06b6d4', '#16a34a', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6']
 
@@ -43,7 +46,7 @@ const emptyForm = {
 export default function ActiveCustomers() {
   const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0, activeTypes: 0 })
+  const [stats, setStats] = useState([])
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState('')
   const [page, setPage] = useState(1)
@@ -55,6 +58,10 @@ export default function ActiveCustomers() {
   const [deleteCustomer, setDeleteCustomer] = useState(null)
   const [viewCustomer, setViewCustomer] = useState(null)
   const [customerTypes, setCustomerTypes] = useState(CUSTOMER_TYPES_FALLBACK)
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [selectedCustId, setSelectedCustId] = useState(null)
+  const [chartData, setChartData] = useState(null)
+  const [topBuyers, setTopBuyers] = useState([])
   const typeNameMap = Object.fromEntries(customerTypes.map(t => [t.code, t.name]))
 
   useEffect(() => { fetchData() }, [])
@@ -68,12 +75,62 @@ export default function ActiveCustomers() {
         api.getCustomerTypes()
       ])
       setCustomers(data || [])
-      setStats(statsData || { total: 0, active: 0, inactive: 0, activeTypes: 0 })
+      const s = statsData || { total: 0, active: 0, inactive: 0, pilot: 0, distribution: {}, topBuyers: [] }
+      
+      setStats([
+        { label: 'Active Customers', value: s.active, icon: 'bi-people', color: '#2563eb', bg: '#eff6ff' },
+        { label: 'Medical Sector', value: s.distribution?.Medical || 0, icon: 'bi-heart-pulse', color: '#7c3aed', bg: '#f5f3ff' },
+        { label: 'Pilot Accounts', value: s.pilot || 0, icon: 'bi-star', color: '#ea580c', bg: '#fff7ed' },
+        { label: 'Distributors', value: s.distribution?.Distributor || 0, icon: 'bi-truck', color: '#16a34a', bg: '#f0fdf4' },
+      ])
+
+      setTopBuyers(s.topBuyers || [])
+
+      // Process chart data
+      const dist = s.distribution || {}
+      const labels = Object.keys(dist)
+      const values = Object.values(dist)
+
+      if (labels.length > 0) {
+        setChartData({
+          labels: labels,
+          datasets: [{
+            label: 'Customer Distribution',
+            data: values,
+            backgroundColor: ['#2563eb', '#7c3aed', '#16a34a', '#ea580c', '#3b82f6', '#10b981'],
+            borderWidth: 0,
+            hoverOffset: 4
+          }]
+        })
+      } else {
+        setChartData({
+          labels: ['No Data'],
+          datasets: [{
+            label: 'No Data',
+            data: [0],
+            backgroundColor: ['#e2e8f0'],
+            borderWidth: 0
+          }]
+        })
+      }
+
       if (typesData && typesData.length > 0) setCustomerTypes(typesData)
-    } catch (err) {
-      toast.error('Failed to load customers: ' + err.message)
+    } catch (error) {
+      console.error('Fetch error:', error)
+      toast.error('Failed to load customer analytics')
+      setStats([
+        { label: 'Active Customers', value: 0, icon: 'bi-people', color: '#2563eb', bg: '#eff6ff' },
+        { label: 'Medical Sector', value: 0, icon: 'bi-heart-pulse', color: '#7c3aed', bg: '#f5f3ff' },
+        { label: 'Pilot Accounts', value: 0, icon: 'bi-star', color: '#ea580c', bg: '#fff7ed' },
+        { label: 'Distributors', value: 0, icon: 'bi-truck', color: '#16a34a', bg: '#f0fdf4' },
+      ])
+      setChartData({
+        labels: ['Error'],
+        datasets: [{ data: [0], backgroundColor: ['#ef4444'] }]
+      })
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   function openCreate() {
@@ -121,8 +178,7 @@ export default function ActiveCustomers() {
     e.preventDefault()
     if (!form.company_name.trim()) { toast.error('Company name is required'); return }
 
-    // Phone validation
-    if (form.company_phone && !validatePhone(form.company_phone)) {
+    if (form.phone && !validatePhone(form.phone)) {
       toast.error('Invalid phone number format'); return
     }
 
@@ -191,147 +247,140 @@ export default function ActiveCustomers() {
 
   return (
     <div>
-      {/* Page Header */}
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <div>
-          <nav aria-label="breadcrumb">
-            <ol className="breadcrumb mb-1">
-              <li className="breadcrumb-item"><Link to="/dashboard"><i className="bi bi-house-door"></i></Link></li>
-              <li className="breadcrumb-item">Customers</li>
-              <li className="breadcrumb-item active">Active List</li>
-            </ol>
-          </nav>
-          <h3 className="mb-0">Active Customers</h3>
-        </div>
-        <div className="d-flex gap-2">
-          <Link to="/customers/inactive" className="btn btn-outline-secondary">
-            <i className="bi bi-person-x me-1"></i> Inactive
-          </Link>
-          <button className="btn btn-primary" onClick={openCreate}>
-            <i className="bi bi-plus-lg me-1"></i> Add Customer
+      <PageChartHeader
+        title="Active Customers"
+        subtitle="Manage and analyze your active customer relationships"
+        breadcrumbs={[
+          { label: 'Dashboard', link: '/dashboard' },
+          { label: 'Customers' }
+        ]}
+        stats={stats}
+        chartData={chartData}
+        chartType="bar"
+        actions={
+          <button className="btn btn-primary rounded-pill px-4" onClick={openCreate}>
+            <i className="bi bi-person-plus me-2"></i>Add Customer
           </button>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Stats */}
-      <div className="row g-3 mb-4">
-        {[
-          { value: stats.total, label: 'Total Customers', icon: 'bi-building-fill', bg: '#eff6ff', color: '#2563eb' },
-          { value: stats.active, label: 'Active', icon: 'bi-check-circle-fill', bg: '#ecfdf5', color: '#10b981' },
-          { value: stats.inactive, label: 'Inactive', icon: 'bi-x-circle-fill', bg: '#fef2f2', color: '#ef4444' },
-          { value: stats.activeTypes, label: 'Customer Types', icon: 'bi-tags-fill', bg: '#f5f3ff', color: '#8b5cf6' },
-        ].map((stat, i) => (
-          <div className="col-md-3 col-6" key={i}>
-            <div className="stat-card">
-              <div className="d-flex align-items-center gap-3">
-                <div className="stat-icon" style={{ background: stat.bg, color: stat.color }}>
-                  <i className={`bi ${stat.icon}`}></i>
+      <div className="row g-4 mb-4">
+        {/* Main Content Area */}
+        <div className="col-lg-9">
+          <div className="card border-0 shadow-sm" style={{ borderRadius: 16 }}>
+            <div className="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
+              <h5 className="mb-0 fw-bold">Customer Directory</h5>
+              <div className="d-flex gap-2">
+                <div className="input-group input-group-sm" style={{ width: 250 }}>
+                  <span className="input-group-text bg-light border-end-0"><i className="bi bi-search"></i></span>
+                  <input type="text" className="form-control bg-light border-start-0" placeholder="Search customers..." value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
-                <div>
-                  <div className="stat-value">{loading ? '-' : stat.value}</div>
-                  <div className="stat-label">{stat.label}</div>
-                </div>
+                <select className="form-select form-select-sm" style={{ width: 150 }} value={filterType} onChange={e => setFilterType(e.target.value)}>
+                  <option value="">All Types</option>
+                  {customerTypes.map(t => (
+                    <option key={t._id || t.code} value={t.code}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="table-responsive">
+              <table className="table table-hover align-middle mb-0">
+                <thead className="bg-light">
+                  <tr>
+                    <th className="ps-4" style={{ width: 80 }}>Cust #</th>
+                    <th>Customer</th>
+                    <th>Contact</th>
+                    <th>Phone</th>
+                    <th>Type</th>
+                    <th className="pe-4 text-center" style={{ width: 140 }}>Action</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr><td colSpan="7" className="text-center py-4"><div className="spinner-border spinner-border-sm text-primary"></div> Loading...</td></tr>
+                  ) : paginated.length === 0 ? (
+                    <tr><td colSpan="7" className="text-center py-4 text-muted">No customers found</td></tr>
+                  ) : paginated.map((c, i) => (
+                    <tr key={c._id}>
+                      <td className="ps-4 fw-semibold">{c.customer_code || '-'}</td>
+                      <td>
+                        <div className="d-flex align-items-center gap-3">
+                          <div className="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white"
+                            style={{ width: 32, height: 32, fontSize: '0.75rem', background: hashColor(c.company_name || '') }}>
+                            {getInitials(c.company_name)}
+                          </div>
+                          <div>
+                            <div className="fw-semibold">{c.company_name}</div>
+                            {c.email && <span className="text-muted" style={{ fontSize: '0.75rem' }}>{c.email}</span>}
+                          </div>
+                        </div>
+                      </td>
+                      <td><span className="small">{c.contact_name || '-'}</span></td>
+                      <td><span className="small">{c.phone || '-'}</span></td>
+                      <td>
+                        {c.customer_type && <span className="badge bg-primary-subtle text-primary rounded-pill px-2">{typeNameMap[c.customer_type] || c.customer_type}</span>}
+                      </td>
+                      <td className="pe-4 text-center">
+                        <button className="btn btn-sm btn-action btn-outline-info me-1" title="View" onClick={() => { setSelectedCustId(c._id); setPanelOpen(true) }}>
+                          <i className="bi bi-eye"></i>
+                        </button>
+                        <button className="btn btn-sm btn-action btn-outline-warning me-1" title="Deactivate" onClick={() => setDeactivateCustomer(c)}>
+                          <i className="bi bi-pause-circle"></i>
+                        </button>
+                        <button className="btn btn-sm btn-action btn-outline-danger" title="Delete" onClick={() => setDeleteCustomer(c)}>
+                          <i className="bi bi-trash"></i>
+                        </button>
+                      </td>
+                      <td>
+                        <span className={`badge rounded-pill px-3 ${c.status === 'active' ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'}`}>
+                          {c.status === 'active' ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="mt-3">
+             <Pagination total={filtered.length} page={page} perPage={perPage} onPageChange={setPage} onPerPageChange={v => { setPerPage(v); setPage(1) }} />
+          </div>
+        </div>
+
+        {/* Sidebar Analytics */}
+        <div className="col-lg-3">
+          <div className="card border-0 shadow-sm mb-4" style={{ borderRadius: 16 }}>
+            <div className="card-body">
+              <h6 className="fw-bold mb-3 d-flex align-items-center">
+                <i className="bi bi-trophy text-warning me-2"></i> Top 10 Buyers
+              </h6>
+              <div className="list-group list-group-flush">
+                {topBuyers.map((buyer, idx) => (
+                  <div key={idx} className="list-group-item px-0 py-2 border-0 border-bottom">
+                    <div className="d-flex justify-content-between align-items-start">
+                      <div className="text-truncate me-2">
+                        <div className="fw-bold text-dark small text-truncate">{buyer.company_name}</div>
+                        <div className="text-muted" style={{ fontSize: '0.7rem' }}>{buyer.orderCount} Orders</div>
+                      </div>
+                      <div className="text-end">
+                        <div className="fw-bold text-primary small">${Number(buyer.totalSales).toLocaleString()}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {topBuyers.length === 0 && <div className="text-center text-muted py-4 small italic">No sales data available</div>}
               </div>
             </div>
           </div>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div className="card border-0 shadow-sm rounded-4 mb-3">
-        <div className="card-body py-3 px-4">
-          <div className="d-flex flex-wrap align-items-center gap-3">
-            <div className="position-relative flex-grow-1" style={{ maxWidth: 320 }}>
-              <i className="bi bi-search position-absolute" style={{ left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}></i>
-              <input type="text" className="form-control form-control-sm ps-5" placeholder="Search customers..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
+          
+          <div className="card border-0 shadow-sm bg-primary text-white" style={{ borderRadius: 16 }}>
+            <div className="card-body">
+              <h6 className="fw-bold mb-2">Pro Tip</h6>
+              <p className="small mb-0 opacity-75">Click the icons in the chart header to switch between Pie and Bar views for customer segments.</p>
             </div>
-            <select className="form-select form-select-sm" style={{ width: 'auto', minWidth: 160 }} value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1) }}>
-              <option value="">All Types</option>
-              {customerTypes.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}
-            </select>
-            {(search || filterType) && (
-              <button className="btn btn-sm btn-outline-secondary" onClick={() => { setSearch(''); setFilterType(''); setPage(1) }}>
-                <i className="bi bi-x-lg me-1"></i>Clear
-              </button>
-            )}
-            <span className="text-muted small ms-auto">{filtered.length} customer{filtered.length !== 1 ? 's' : ''}</span>
           </div>
         </div>
-      </div>
-
-      {/* Table */}
-      <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
-        <div className="card-header py-3 border-0" style={{ background: 'linear-gradient(135deg, #2563eb, #1e40af)', color: '#fff' }}>
-          <div className="d-flex justify-content-between align-items-center">
-            <h5 className="mb-0"><i className="bi bi-building me-2"></i>Customer List</h5>
-            <span className="badge bg-white bg-opacity-25 px-3 py-2">{filtered.length} customers</span>
-          </div>
-        </div>
-        <div className="table-responsive">
-          <table className="table table-hover align-middle mb-0">
-            <thead className="bg-light">
-              <tr>
-                <th className="ps-4" style={{ width: 80 }}>Cust #</th>
-                <th>Customer</th>
-                <th>Contact</th>
-                <th>Phone</th>
-                <th>Type</th>
-                <th className="pe-4 text-center" style={{ width: 140 }}>Action</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan="7" className="text-center py-4"><div className="spinner-border spinner-border-sm text-primary"></div> Loading...</td></tr>
-              ) : paginated.length === 0 ? (
-                <tr><td colSpan="7" className="text-center py-4 text-muted">No customers found</td></tr>
-              ) : paginated.map((c, i) => (
-                <tr key={c._id}>
-                  <td className="ps-4 fw-semibold">{c.customer_code || '-'}</td>
-                  <td>
-                    <div className="d-flex align-items-center gap-3">
-                      <div className="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white"
-                        style={{ width: 32, height: 32, fontSize: '0.75rem', background: hashColor(c.company_name || '') }}>
-                        {getInitials(c.company_name)}
-                      </div>
-                      <div>
-                        <div className="fw-semibold">{c.company_name}</div>
-                        {c.email && <span className="text-muted" style={{ fontSize: '0.75rem' }}>{c.email}</span>}
-                      </div>
-                    </div>
-                  </td>
-                  <td><span className="small">{c.contact_name || '-'}</span></td>
-                  <td><span className="small">{c.phone || '-'}</span></td>
-                  <td>
-                    {c.customer_type && <span className="badge bg-primary-subtle text-primary rounded-pill px-2">{typeNameMap[c.customer_type] || c.customer_type}</span>}
-                  </td>
-                  <td className="pe-4 text-center">
-                    <Link to={'/customers/' + c._id} className="btn btn-sm btn-action btn-outline-info me-1" title="View">
-                      <i className="bi bi-eye"></i>
-                    </Link>
-                    <button className="btn btn-sm btn-action btn-outline-warning me-1" title="Deactivate" onClick={() => setDeactivateCustomer(c)}>
-                      <i className="bi bi-pause-circle"></i>
-                    </button>
-                    <button className="btn btn-sm btn-action btn-outline-danger" title="Delete" onClick={() => setDeleteCustomer(c)}>
-                      <i className="bi bi-trash"></i>
-                    </button>
-                  </td>
-                  <td>
-                    <span className={`badge rounded-pill px-3 ${c.status === 'active' ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'}`}>
-                      {c.status === 'active' ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {filtered.length > 0 && (
-          <div className="card-footer bg-white border-0 py-3">
-            <Pagination total={filtered.length} page={page} perPage={perPage}
-              onPageChange={setPage} onPerPageChange={v => { setPerPage(v); setPage(1) }} />
-          </div>
-        )}
       </div>
 
       {/* Create/Edit Modal */}
@@ -595,6 +644,17 @@ export default function ActiveCustomers() {
           </div>
         </div>
       </>)}
+
+      {/* Customer Detail Panel */}
+      <SlidePanel
+        isOpen={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        title="Customer Details"
+        subtitle="Full profile and history"
+        width="1100px"
+      >
+        {selectedCustId && <CustomerDetailView id={selectedCustId} />}
+      </SlidePanel>
     </div>
   )
 }

@@ -28,6 +28,7 @@ import airfeetPoRouter from './routes/airfeetPo.js'
 import invoicesRouter from './routes/invoices.js'
 import commissionsRouter from './routes/commissions.js'
 import reportsRouter from './routes/reports.js'
+import pilotProgramsRouter from './routes/pilotPrograms.js'
 import User from './models/User.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -98,6 +99,7 @@ app.use('/api/airfeet-po', airfeetPoRouter)
 app.use('/api/invoices', invoicesRouter)
 app.use('/api/commissions', commissionsRouter)
 app.use('/api/reports', reportsRouter)
+app.use('/api/pilot-programs', pilotProgramsRouter)
 
 // Health check
 app.get('/api/health', (req, res) => {

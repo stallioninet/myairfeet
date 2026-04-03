@@ -44,7 +44,7 @@ const navSections = [
     ]
   },
   {
-    title: null,
+    title: 'Customers',
     icon: 'bi-building',
     label: 'Customers',
     children: [
@@ -67,9 +67,10 @@ const navSections = [
     ]
   },
   {
-    title: null,
+    title: 'Finance',
     items: [
       { label: 'Commissions', icon: 'bi-cash-stack', path: '/commissions' },
+      { label: 'Pilot Programs', icon: 'bi-clipboard2-pulse', path: '/pilot-programs' },
       { label: 'Airfeet PO', icon: 'bi-file-earmark-text', path: '/airfeet-po' },
       { label: 'Events', icon: 'bi-calendar-event', path: '/events' },
     ]

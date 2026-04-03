@@ -30,22 +30,116 @@ router.get('/types', async (req, res) => {
 // GET stats
 router.get('/stats', async (req, res) => {
   try {
+    const db = mongoose.connection.db
     const [total, active, inactive, pilot] = await Promise.all([
       col().countDocuments(),
       col().countDocuments({ status: 'active' }),
       col().countDocuments({ status: 'inactive' }),
       col().countDocuments({ status: 'pilot' }),
     ])
-    // Count distinct customer types
-    const types = await col().distinct('customer_type')
-    const activeTypes = types.filter(t => t && t.trim() !== '').length
-    res.json({ total, active, inactive, pilot, activeTypes })
+
+    // Top Buyers: Aggregate invoices (po_status '1' = active/posted)
+    const topBuyerIds = await db.collection('invoices').aggregate([
+      { $match: { po_status: '1', company_id: { $exists: true, $ne: null } } },
+      { 
+        $group: { 
+          _id: '$company_id', 
+          totalSales: { $sum: { $toDouble: { $ifNull: ["$net_amount", "0"] } } }, 
+          count: { $sum: 1 } 
+        } 
+      },
+      { $sort: { totalSales: -1 } },
+      { $limit: 10 }
+    ]).toArray()
+
+    // Enrich top buyers with customer names
+    const legacyIds = topBuyerIds.map(b => parseInt(b._id)).filter(id => !isNaN(id))
+    const buyersWithNames = await col().find({ legacy_id: { $in: legacyIds } }).project({ legacy_id: 1, company_name: 1 }).toArray()
+    const buyerMap = Object.fromEntries(buyersWithNames.map(b => [b.legacy_id, b.company_name]))
+    const topBuyers = topBuyerIds.map(b => {
+      const lid = parseInt(b._id)
+      return {
+        company_id: lid,
+        company_name: buyerMap[lid] || `Customer #${lid}`,
+        totalSales: b.totalSales,
+        orderCount: b.count
+      }
+    })
+
+    // Customer Type Distribution Mapping
+    const typeDistributionRaw = await col().aggregate([
+      { $match: { status: 'active' } },
+      { $group: { _id: '$customer_type', count: { $sum: 1 } } }
+    ]).toArray()
+
+    const distribution = { Distributor: 0, Retail: 0, Medical: 0, Other: 0 }
+    
+    // Comprehensive categorization logic based on actual legacy codes
+    const categoryMap = {
+      // Distributor
+      'sd': 'Distributor', 'distributorsafety': 'Distributor', 'dh': 'Distributor', 'distributorhealth': 'Distributor', 
+      'pp': 'Distributor', 'promo_dist': 'Distributor',
+      // Retail
+      'rc': 'Retail', 'retail_cust': 'Retail', 'shr': 'Retail', 'sr_shoe_retailer': 'Retail', 'wr': 'Retail', 
+      'internet': 'Retail', 'aafes': 'Retail', 'cin': 'Retail', 'retail_ecom': 'Retail', 'retailergen': 'Retail', 
+      'retail_industrial': 'Retail', 'g': 'Retail', 'ir': 'Retail', 'mil': 'Retail',
+      // Medical
+      'rm': 'Medical', 'retail_med': 'Medical', 'health': 'Medical', 'med': 'Medical', 'h': 'Medical'
+    }
+
+    typeDistributionRaw.forEach(item => {
+      const code = (item._id || '').toLowerCase().trim()
+      const category = categoryMap[code] || 'Other'
+      distribution[category] += item.count
+    })
+
+    res.json({ 
+      total, 
+      active, 
+      inactive, 
+      pilot, 
+      topBuyers,
+      distribution
+    })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
-// GET check unique company name
+// TEMP DEBUG: Check invoice structure
+router.get('/debug-invoices', async (req, res) => {
+  try {
+    const db = mongoose.connection.db
+    const sample = await db.collection('invoices').findOne({})
+    const statuses = await db.collection('invoices').distinct('po_status')
+    const countStr = await db.collection('invoices').countDocuments({ po_status: '1' })
+    const countNum = await db.collection('invoices').countDocuments({ po_status: 1 })
+    const withCid = await db.collection('invoices').findOne({ company_id: { $exists: true, $ne: null, $ne: '' } })
+    const topRaw = await db.collection('invoices').aggregate([
+      { $match: { company_id: { $exists: true, $ne: null } } },
+      { $group: { _id: '$company_id', total: { $sum: { $toDouble: { $ifNull: ['$net_amount','0'] } } }, count: { $sum: 1 } } },
+      { $sort: { total: -1 } },
+      { $limit: 5 }
+    ]).toArray()
+    res.json({
+      sampleKeys: Object.keys(sample || {}),
+      po_status_type: typeof sample?.po_status,
+      po_status_value: sample?.po_status,
+      company_id_type: typeof sample?.company_id,
+      company_id_value: sample?.company_id,
+      net_amount_type: typeof sample?.net_amount,
+      net_amount_value: sample?.net_amount,
+      all_statuses: statuses,
+      count_status_str_1: countStr,
+      count_status_num_1: countNum,
+      sample_with_company_id: withCid ? { cid: withCid.company_id, cid_type: typeof withCid.company_id, status: withCid.po_status } : null,
+      top5_buyers_no_filter: topRaw
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 router.get('/check-unique', async (req, res) => {
   try {
     const { name, exclude_id } = req.query
