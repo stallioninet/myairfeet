@@ -38,9 +38,9 @@ router.get('/stats', async (req, res) => {
       col().countDocuments({ status: 'pilot' }),
     ])
 
-    // Top Buyers: Aggregate invoices (po_status '1' = active/posted)
+    // Top Buyers: Aggregate invoices (po_status 1 = active/posted, match both string and number)
     const topBuyerIds = await db.collection('invoices').aggregate([
-      { $match: { po_status: '1', company_id: { $exists: true, $ne: null } } },
+      { $match: { po_status: { $in: [1, '1'] }, company_id: { $exists: true, $ne: null } } },
       { 
         $group: { 
           _id: '$company_id', 
@@ -166,7 +166,7 @@ router.get('/:id/invoices', async (req, res) => {
 
     // Get distinct years from invoices for year filter
     const allInvoices = await db.collection('invoices')
-      .find({ company_id: legacyId, po_status: 1 })
+      .find({ company_id: legacyId, po_status: { $in: [1, '1'] } })
       .project({ created_at: 1, legacy_id: 1 })
       .toArray()
     const yearsSet = new Set()
@@ -179,7 +179,7 @@ router.get('/:id/invoices', async (req, res) => {
     const yearFilter = req.query.year === 'all' ? null
       : req.query.year ? parseInt(req.query.year)
       : new Date().getFullYear()
-    let query = { company_id: legacyId, po_status: 1 }
+    let query = { company_id: legacyId, po_status: { $in: [1, '1'] } }
     if (yearFilter) {
       const start = new Date(`${yearFilter}-01-01T00:00:00.000Z`)
       const end = new Date(`${yearFilter + 1}-01-01T00:00:00.000Z`)

@@ -41,6 +41,8 @@ const navSections = [
     children: [
       { label: 'Active', path: '/sales-reps/active' },
       { label: 'Inactive', path: '/sales-reps/inactive' },
+      { label: 'Reports - Monthly', path: '/sales-reps/reports?tab=rep-month' },
+      { label: 'Reports - Yearly', path: '/sales-reps/reports?tab=rep-year' },
     ]
   },
   {
@@ -54,6 +56,8 @@ const navSections = [
       { label: 'Suppliers', path: '/customers/suppliers' },
       { label: 'Customer Types', path: '/customers/types' },
       { label: 'Import / Export', path: '/customers/import-export' },
+      { label: 'Reports - Yearly', path: '/customers/reports?tab=year' },
+      { label: 'Reports - Monthly', path: '/customers/reports?tab=month' },
     ]
   },
   {
@@ -64,6 +68,7 @@ const navSections = [
       { label: 'Invoices', path: '/invoices' },
       { label: 'Outstanding', path: '/invoices/outstanding' },
       { label: 'Outstand Emails', path: '/invoices/outstand-emails' },
+      { label: 'Reports - Paid', path: '/invoices/reports' },
     ]
   },
   {
@@ -73,18 +78,6 @@ const navSections = [
       { label: 'Pilot Programs', icon: 'bi-clipboard2-pulse', path: '/pilot-programs' },
       { label: 'Airfeet PO', icon: 'bi-file-earmark-text', path: '/airfeet-po' },
       { label: 'Events', icon: 'bi-calendar-event', path: '/events' },
-    ]
-  },
-  {
-    title: 'Analytics',
-    icon: 'bi-graph-up',
-    label: 'Reports',
-    children: [
-      { label: 'Year', path: '/reports?tab=year' },
-      { label: 'Month', path: '/reports?tab=month' },
-      { label: 'Sales Rep Month', path: '/reports?tab=rep-month' },
-      { label: 'Sales Rep Year', path: '/reports?tab=rep-year' },
-      { label: 'Paid Invoice', path: '/reports?tab=paid' },
     ]
   },
 ]

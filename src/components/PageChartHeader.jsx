@@ -33,7 +33,8 @@ export default function PageChartHeader({
   chartData,
   chartType = 'line',
   chartHeight = 220,
-  actions
+  actions,
+  extraContent
 }) {
   const [activeType, setActiveType] = useState(chartType)
   
@@ -125,8 +126,8 @@ export default function PageChartHeader({
         </div>
 
         {/* Chart Section */}
-        <div className="col-12 col-xl-8">
-          <div className="card border-0 shadow-sm p-3" style={{ borderRadius: 20, background: 'linear-gradient(to right, #ffffff, #f8fafc)' }}>
+        <div className={`col-12 ${extraContent ? 'col-xl-5' : 'col-xl-8'}`}>
+          <div className="card border-0 shadow-sm p-3 h-100" style={{ borderRadius: 20, background: 'linear-gradient(to right, #ffffff, #f8fafc)' }}>
             <div className="d-flex justify-content-between align-items-center mb-3">
               <h6 className="fw-bold mb-0">Analytics Overview</h6>
               <div className="d-flex bg-light p-1 rounded-pill" style={{ border: '1px solid #e2e8f0' }}>
@@ -159,6 +160,13 @@ export default function PageChartHeader({
             </div>
           </div>
         </div>
+
+        {/* Extra Content Section (e.g., Top Buyers) */}
+        {extraContent && (
+          <div className="col-12 col-xl-3">
+            {extraContent}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -262,11 +262,42 @@ export default function ActiveCustomers() {
             <i className="bi bi-person-plus me-2"></i>Add Customer
           </button>
         }
+        extraContent={
+          <div className="card border-0 shadow-sm h-100" style={{ borderRadius: 20 }}>
+            <div className="card-body p-3">
+              <h6 className="fw-bold mb-3 d-flex align-items-center">
+                <i className="bi bi-trophy text-warning me-2"></i> Top 10 Buyers
+              </h6>
+              <div className="list-group list-group-flush" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                {topBuyers.map((buyer, idx) => (
+                  <div key={idx} className="list-group-item px-0 py-2 border-0 border-bottom">
+                    <div className="d-flex align-items-center gap-2">
+                      <div className="d-flex align-items-center justify-content-center rounded-circle fw-bold text-white flex-shrink-0"
+                        style={{ width: 24, height: 24, fontSize: '0.65rem', background: avatarColors[idx % avatarColors.length] }}>
+                        {idx + 1}
+                      </div>
+                      <div className="text-truncate flex-grow-1">
+                        <div className="fw-semibold text-dark text-truncate" style={{ fontSize: '0.78rem' }}>{buyer.company_name}</div>
+                      </div>
+                      <div className="text-end flex-shrink-0">
+                        <div className="fw-bold text-primary" style={{ fontSize: '0.75rem' }}>${Number(buyer.totalSales).toLocaleString()}</div>
+                        <div className="text-muted" style={{ fontSize: '0.6rem' }}>{buyer.orderCount} orders</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {topBuyers.length === 0 && (
+                  <div className="text-center text-muted py-4 small fst-italic">No sales data available</div>
+                )}
+              </div>
+            </div>
+          </div>
+        }
       />
 
       <div className="row g-4 mb-4">
-        {/* Main Content Area */}
-        <div className="col-lg-9">
+        {/* Main Content Area - Full Width */}
+        <div className="col-12">
           <div className="card border-0 shadow-sm" style={{ borderRadius: 16 }}>
             <div className="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
               <h5 className="mb-0 fw-bold">Customer Directory</h5>
@@ -284,16 +315,16 @@ export default function ActiveCustomers() {
               </div>
             </div>
             <div className="table-responsive">
-              <table className="table table-hover align-middle mb-0">
+              <table className="table table-hover align-middle mb-0" style={{ tableLayout: 'fixed' }}>
                 <thead className="bg-light">
                   <tr>
                     <th className="ps-4" style={{ width: 80 }}>Cust #</th>
-                    <th>Customer</th>
-                    <th>Contact</th>
-                    <th>Phone</th>
-                    <th>Type</th>
-                    <th className="pe-4 text-center" style={{ width: 140 }}>Action</th>
-                    <th>Status</th>
+                    <th style={{ width: '30%' }}>Customer</th>
+                    <th style={{ width: '14%' }}>Contact</th>
+                    <th style={{ width: '12%' }}>Phone</th>
+                    <th style={{ width: '12%' }}>Type</th>
+                    <th className="pe-4 text-center" style={{ width: 130 }}>Action</th>
+                    <th style={{ width: 90 }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -305,14 +336,14 @@ export default function ActiveCustomers() {
                     <tr key={c._id}>
                       <td className="ps-4 fw-semibold">{c.customer_code || '-'}</td>
                       <td>
-                        <div className="d-flex align-items-center gap-3">
-                          <div className="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white"
+                        <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
+                          <div className="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white flex-shrink-0"
                             style={{ width: 32, height: 32, fontSize: '0.75rem', background: hashColor(c.company_name || '') }}>
                             {getInitials(c.company_name)}
                           </div>
-                          <div>
-                            <div className="fw-semibold">{c.company_name}</div>
-                            {c.email && <span className="text-muted" style={{ fontSize: '0.75rem' }}>{c.email}</span>}
+                          <div style={{ minWidth: 0 }}>
+                            <div className="fw-semibold text-truncate">{c.company_name}</div>
+                            {c.email && <div className="text-muted text-truncate" style={{ fontSize: '0.75rem' }}>{c.email}</div>}
                           </div>
                         </div>
                       </td>
@@ -348,39 +379,6 @@ export default function ActiveCustomers() {
           </div>
         </div>
 
-        {/* Sidebar Analytics */}
-        <div className="col-lg-3">
-          <div className="card border-0 shadow-sm mb-4" style={{ borderRadius: 16 }}>
-            <div className="card-body">
-              <h6 className="fw-bold mb-3 d-flex align-items-center">
-                <i className="bi bi-trophy text-warning me-2"></i> Top 10 Buyers
-              </h6>
-              <div className="list-group list-group-flush">
-                {topBuyers.map((buyer, idx) => (
-                  <div key={idx} className="list-group-item px-0 py-2 border-0 border-bottom">
-                    <div className="d-flex justify-content-between align-items-start">
-                      <div className="text-truncate me-2">
-                        <div className="fw-bold text-dark small text-truncate">{buyer.company_name}</div>
-                        <div className="text-muted" style={{ fontSize: '0.7rem' }}>{buyer.orderCount} Orders</div>
-                      </div>
-                      <div className="text-end">
-                        <div className="fw-bold text-primary small">${Number(buyer.totalSales).toLocaleString()}</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {topBuyers.length === 0 && <div className="text-center text-muted py-4 small italic">No sales data available</div>}
-              </div>
-            </div>
-          </div>
-          
-          <div className="card border-0 shadow-sm bg-primary text-white" style={{ borderRadius: 16 }}>
-            <div className="card-body">
-              <h6 className="fw-bold mb-2">Pro Tip</h6>
-              <p className="small mb-0 opacity-75">Click the icons in the chart header to switch between Pie and Bar views for customer segments.</p>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Create/Edit Modal */}
