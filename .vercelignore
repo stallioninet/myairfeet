@@ -1,0 +1,5 @@
+backups/
+uploads/
+debug_invoices.mjs
+debug_stats.js
+server/backup-local.mjs
