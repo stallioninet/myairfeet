@@ -7,8 +7,10 @@ import fs from 'fs'
 import PilotProgram from '../models/PilotProgram.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const uploadDir = join(__dirname, '..', '..', 'uploads', 'pilot_programs')
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
+const uploadDir = process.env.VERCEL
+  ? '/tmp/uploads/pilot_programs'
+  : join(__dirname, '..', '..', 'uploads', 'pilot_programs')
+try { if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true }) } catch {}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),

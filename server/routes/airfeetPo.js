@@ -6,8 +6,10 @@ import { dirname, join } from 'path'
 import fs from 'fs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const uploadDir = join(__dirname, '..', '..', 'uploads', 'customer_po')
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
+const uploadDir = process.env.VERCEL
+  ? '/tmp/uploads/customer_po'
+  : join(__dirname, '..', '..', 'uploads', 'customer_po')
+try { if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true }) } catch {}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
