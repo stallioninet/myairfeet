@@ -1,4 +1,5 @@
 {
+  "buildCommand": "npm install && npm run build && npm prune --omit=dev",
   "functions": {
     "api/index.js": {
       "maxDuration": 30
