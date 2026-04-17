@@ -1,5 +1,6 @@
 import express from 'express'
 import User from '../models/User.js'
+import { hashPassword, verifyPassword } from '../lib/password.js'
 
 const router = express.Router()
 
@@ -52,10 +53,48 @@ router.get('/:id', async (req, res) => {
   }
 })
 
+// POST reset-password — reset a single user's password by email (admin setup utility)
+// Body: { email, new_password }
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { email, new_password } = req.body
+    if (!email || !new_password) return res.status(400).json({ error: 'email and new_password required' })
+    if (new_password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' })
+    const hashed = hashPassword(new_password)
+    const user = await User.findOneAndUpdate(
+      { email: { $regex: new RegExp(`^${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+      { $set: { password: hashed } },
+      { new: true }
+    )
+    if (!user) return res.status(404).json({ error: 'User not found' })
+    res.json({ message: 'Password updated', email: user.email })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST seed-passwords — sets a default password for every user that has an empty password
+// Default: Admin@1  (call once after initial import to ensure everyone has a valid hash)
+router.post('/seed-passwords', async (req, res) => {
+  try {
+    const defaultPlain = req.body?.default_password || 'Admin@1'
+    const hashed = hashPassword(defaultPlain)
+    const result = await User.updateMany(
+      { $or: [{ password: '' }, { password: null }, { password: { $exists: false } }] },
+      { $set: { password: hashed } }
+    )
+    res.json({ message: 'Passwords seeded', modified: result.modifiedCount, default_password: defaultPlain })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // POST create user
 router.post('/', async (req, res) => {
   try {
-    const user = new User(req.body)
+    const body = { ...req.body }
+    if (body.password) body.password = hashPassword(body.password)
+    const user = new User(body)
     await user.save()
     res.status(201).json(user)
   } catch (err) {
@@ -69,7 +108,10 @@ router.post('/', async (req, res) => {
 // PUT update user
 router.put('/:id', async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true })
+    const body = { ...req.body }
+    if (body.password) body.password = hashPassword(body.password)
+    else delete body.password  // never overwrite with empty string
+    const user = await User.findByIdAndUpdate(req.params.id, body, { new: true, runValidators: true })
     if (!user) return res.status(404).json({ error: 'User not found' })
     res.json(user)
   } catch (err) {
@@ -98,15 +140,35 @@ router.delete('/:id', async (req, res) => {
   }
 })
 
-// POST login (find by email)
+// POST login — verify email (or username) + password
 router.post('/login', async (req, res) => {
   try {
-    const user = await User.findOne({ email: req.body.email })
-    if (!user) return res.status(404).json({ error: 'User not found' })
+    const { email, username, password } = req.body
+    if (!password) return res.status(400).json({ error: 'Password is required' })
+
+    // Accept login by email or username
+    const identifier = email || username
+    if (!identifier) return res.status(400).json({ error: 'Email or username is required' })
+
+    const query = email
+      ? { email: { $regex: new RegExp(`^${identifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }
+      : { username: identifier }
+
+    const user = await User.findOne(query)
+    if (!user) return res.status(401).json({ error: 'Invalid email or password' })
     if (user.status === 'inactive') return res.status(403).json({ error: 'Account is inactive' })
-    user.last_login = new Date()
-    await user.save()
-    res.json(user)
+
+    if (!verifyPassword(password, user.password)) {
+      return res.status(401).json({ error: 'Invalid email or password' })
+    }
+
+    // Update last_login but don't block the response if the write fails (e.g. storage quota)
+    User.findByIdAndUpdate(user._id, { last_login: new Date() }).catch(() => {})
+
+    // Return user without the password field
+    const userObj = user.toObject()
+    delete userObj.password
+    res.json(userObj)
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

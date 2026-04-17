@@ -4,11 +4,20 @@ import mongoose from 'mongoose'
 const router = Router()
 const col = () => mongoose.connection.db.collection('customers')
 
-// GET all customers (optionally filter by status)
+// GET all customers (optionally filter by status and/or rep_id)
 router.get('/', async (req, res) => {
   try {
     const filter = {}
     if (req.query.status) filter.status = req.query.status
+    if (req.query.rep_id) {
+      const repId = parseInt(req.query.rep_id)
+      // sort_order=0 = this rep is the primary contact for the customer
+      const maps = await mongoose.connection.db.collection('cust_sales_rep_map')
+        .find({ sales_rep_id: repId, status: 1, sort_order: 0 })
+        .project({ company_id: 1 }).toArray()
+      const companyIds = maps.map(m => m.company_id).filter(v => v != null)
+      filter.legacy_id = { $in: companyIds }
+    }
     const data = await col().find(filter).sort({ company_name: 1 }).toArray()
     res.json(data)
   } catch (err) {
@@ -31,22 +40,38 @@ router.get('/types', async (req, res) => {
 router.get('/stats', async (req, res) => {
   try {
     const db = mongoose.connection.db
+
+    // If rep_id is provided, scope all stats to that rep's customers
+    let repCompanyIds = null
+    if (req.query.rep_id) {
+      const repId = parseInt(req.query.rep_id)
+      const maps = await db.collection('cust_sales_rep_map')
+        .find({ sales_rep_id: repId, status: 1, sort_order: 0 })
+        .project({ company_id: 1 }).toArray()
+      repCompanyIds = maps.map(m => m.company_id).filter(v => v != null)
+    }
+
+    const baseFilter = repCompanyIds ? { legacy_id: { $in: repCompanyIds } } : {}
+
     const [total, active, inactive, pilot] = await Promise.all([
-      col().countDocuments(),
-      col().countDocuments({ status: 'active' }),
-      col().countDocuments({ status: 'inactive' }),
-      col().countDocuments({ status: 'pilot' }),
+      col().countDocuments(baseFilter),
+      col().countDocuments({ ...baseFilter, status: 'active' }),
+      col().countDocuments({ ...baseFilter, status: 'inactive' }),
+      col().countDocuments({ ...baseFilter, status: 'pilot' }),
     ])
 
-    // Top Buyers: Aggregate invoices (po_status 1 = active/posted, match both string and number)
+    // Top Buyers: Aggregate invoices scoped to rep's customers if applicable
+    const invoiceMatch = { po_status: { $in: [1, '1'] }, company_id: { $exists: true, $ne: null } }
+    if (repCompanyIds) invoiceMatch.company_id = { $in: repCompanyIds.map(String) }
+
     const topBuyerIds = await db.collection('invoices').aggregate([
-      { $match: { po_status: { $in: [1, '1'] }, company_id: { $exists: true, $ne: null } } },
-      { 
-        $group: { 
-          _id: '$company_id', 
-          totalSales: { $sum: { $toDouble: { $ifNull: ["$net_amount", "0"] } } }, 
-          count: { $sum: 1 } 
-        } 
+      { $match: invoiceMatch },
+      {
+        $group: {
+          _id: '$company_id',
+          totalSales: { $sum: { $toDouble: { $ifNull: ["$net_amount", "0"] } } },
+          count: { $sum: 1 }
+        }
       },
       { $sort: { totalSales: -1 } },
       { $limit: 10 }
@@ -68,7 +93,7 @@ router.get('/stats', async (req, res) => {
 
     // Customer Type Distribution Mapping
     const typeDistributionRaw = await col().aggregate([
-      { $match: { status: 'active' } },
+      { $match: { ...baseFilter, status: 'active' } },
       { $group: { _id: '$customer_type', count: { $sum: 1 } } }
     ]).toArray()
 

@@ -2,9 +2,9 @@ import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 
 const levelLabels = {
-  superuser: 'Superuser',
-  admin: 'Admin',
-  'sales-rep': 'Sales Rep',
+  superuser:    'Superuser',
+  admin:        'Admin',
+  'sales-rep':  'Sales Rep',
   'data-entry': 'Data Entry',
 }
 
@@ -50,7 +50,7 @@ export default function TopHeader({ user, onLogout, onToggleSidebar }) {
               {user ? `${user.first_name} ${user.last_name}` : 'Admin'}
             </div>
             <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-              {levelLabels[user?.level] || 'Superuser'}
+              {levelLabels[user?.level] || levelLabels[user?.user_type?.replace('_', '-')] || 'User'}
             </div>
           </div>
         </div>

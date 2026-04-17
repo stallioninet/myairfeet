@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../../lib/api'
+import { isSalesRepUser, getStoredUser, resolveRepId } from '../../lib/repAuth'
 import Pagination from '../../components/Pagination'
 import PageChartHeader from '../../components/PageChartHeader'
 import SlidePanel from '../../components/SlidePanel'
@@ -44,6 +45,9 @@ const emptyForm = {
 }
 
 export default function ActiveCustomers() {
+  const [_user] = useState(() => getStoredUser())
+  const isSalesRep = isSalesRepUser(_user)
+  const repIdRef = useRef(null)
   const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState([])
@@ -64,14 +68,20 @@ export default function ActiveCustomers() {
   const [topBuyers, setTopBuyers] = useState([])
   const typeNameMap = Object.fromEntries(customerTypes.map(t => [t.code, t.name]))
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => {
+    if (!isSalesRep) { fetchData(); return }
+    resolveRepId(_user.email).then(id => { repIdRef.current = id ?? null; fetchData() })
+  }, [])
 
   async function fetchData() {
     setLoading(true)
     try {
+      const custParams = { status: 'active' }
+      if (isSalesRep && repIdRef.current) custParams.rep_id = repIdRef.current
+      const statsParams = isSalesRep && repIdRef.current ? { rep_id: repIdRef.current } : {}
       const [data, statsData, typesData] = await Promise.all([
-        api.getCustomers('active'),
-        api.getCustomerStats(),
+        api.getCustomers(custParams),
+        api.getCustomerStats(statsParams),
         api.getCustomerTypes()
       ])
       setCustomers(data || [])
@@ -258,9 +268,11 @@ export default function ActiveCustomers() {
         chartData={chartData}
         chartType="bar"
         actions={
-          <button className="btn btn-primary rounded-pill px-4" onClick={openCreate}>
-            <i className="bi bi-person-plus me-2"></i>Add Customer
-          </button>
+          !isSalesRep && (
+            <button className="btn btn-primary rounded-pill px-4" onClick={openCreate}>
+              <i className="bi bi-person-plus me-2"></i>Add Customer
+            </button>
+          )
         }
         extraContent={
           <div className="card border-0 shadow-sm h-100" style={{ borderRadius: 20 }}>
@@ -356,12 +368,14 @@ export default function ActiveCustomers() {
                         <button className="btn btn-sm btn-action btn-outline-info me-1" title="View" onClick={() => { setSelectedCustId(c._id); setPanelOpen(true) }}>
                           <i className="bi bi-eye"></i>
                         </button>
-                        <button className="btn btn-sm btn-action btn-outline-warning me-1" title="Deactivate" onClick={() => setDeactivateCustomer(c)}>
-                          <i className="bi bi-pause-circle"></i>
-                        </button>
-                        <button className="btn btn-sm btn-action btn-outline-danger" title="Delete" onClick={() => setDeleteCustomer(c)}>
-                          <i className="bi bi-trash"></i>
-                        </button>
+                        {!isSalesRep && <>
+                          <button className="btn btn-sm btn-action btn-outline-warning me-1" title="Deactivate" onClick={() => setDeactivateCustomer(c)}>
+                            <i className="bi bi-pause-circle"></i>
+                          </button>
+                          <button className="btn btn-sm btn-action btn-outline-danger" title="Delete" onClick={() => setDeleteCustomer(c)}>
+                            <i className="bi bi-trash"></i>
+                          </button>
+                        </>}
                       </td>
                       <td>
                         <span className={`badge rounded-pill px-3 ${c.status === 'active' ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'}`}>

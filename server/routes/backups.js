@@ -1,50 +1,79 @@
 import express from 'express'
 import mongoose from 'mongoose'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import Backup from '../models/Backup.js'
 import BackupSettings from '../models/BackupSettings.js'
 
 const router = express.Router()
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-function getBucket() {
-  return new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: 'backupfiles' })
+// Backups are stored as local JSON files — NOT in MongoDB (prevents quota bloat)
+const BACKUP_DIR = path.join(__dirname, '..', '..', 'backups')
+if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true })
+
+const SKIP_COLS = new Set([
+  'backups', 'backupsettings',
+  'backupfiles.files', 'backupfiles.chunks',
+])
+
+// ─── Core export helper ────────────────────────────────────────────────────────
+async function exportAllCollections() {
+  const db = mongoose.connection.db
+  const cols = (await db.listCollections().toArray()).map(c => c.name).filter(n => !SKIP_COLS.has(n))
+  const data = {}
+  let totalRecords = 0
+  for (const name of cols) {
+    const docs = await db.collection(name).find({}).toArray()
+    data[name] = docs
+    totalRecords += docs.length
+  }
+  return { data, collections: cols.length, totalRecords }
 }
 
-// Get all backups
+// ─── Routes ────────────────────────────────────────────────────────────────────
+
+// GET all backups
 router.get('/', async (req, res) => {
   try {
     const backups = await Backup.find().sort({ created_at: -1 })
-    res.json(backups)
+    // Attach exists flag so UI can show if file is still on disk
+    const enriched = backups.map(b => {
+      const obj = b.toObject()
+      if (b.file_path) obj.file_exists = fs.existsSync(b.file_path)
+      return obj
+    })
+    res.json(enriched)
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
-// Get stats
+// GET stats
 router.get('/stats', async (req, res) => {
   try {
     const backups = await Backup.find()
-    const total = backups.length
-    const successful = backups.filter(b => b.status === 'success').length
-    const totalSize = backups.reduce((sum, b) => sum + (b.size || 0), 0)
+    const successful = backups.filter(b => b.status === 'success')
+    const totalSize = successful.reduce((s, b) => s + (b.size || 0), 0)
     const settings = await BackupSettings.findOne() || { frequency: 'daily' }
-    // Calculate next backup time
-    const lastBackup = backups.filter(b => b.status === 'success').sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
+    const lastOk = successful.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
     let nextBackup = null
-    if (settings.auto_backup !== false && lastBackup) {
-      const last = new Date(lastBackup.created_at)
-      if (settings.frequency === 'daily') nextBackup = new Date(last.getTime() + 24 * 60 * 60 * 1000)
-      else if (settings.frequency === 'weekly') nextBackup = new Date(last.getTime() + 7 * 24 * 60 * 60 * 1000)
-      else if (settings.frequency === 'monthly') nextBackup = new Date(last.getTime() + 30 * 24 * 60 * 60 * 1000)
+    if (settings.auto_backup !== false && lastOk) {
+      const last = new Date(lastOk.created_at)
+      const map = { daily: 1, weekly: 7, monthly: 30 }
+      const days = map[settings.frequency] || 1
+      nextBackup = new Date(last.getTime() + days * 86400000).toISOString()
     }
-    const failed = backups.filter(b => b.status === 'failed').length
-
     res.json({
-      total,
-      successful,
-      failed,
-      totalSize: (totalSize / (1024 * 1024)).toFixed(1),
-      schedule: settings.auto_backup !== false ? settings.frequency.charAt(0).toUpperCase() + settings.frequency.slice(1) : 'Disabled',
-      nextBackup: nextBackup ? nextBackup.toISOString() : null,
+      total: backups.length,
+      successful: successful.length,
+      failed: backups.filter(b => b.status === 'failed').length,
+      totalSize: (totalSize / 1_048_576).toFixed(1),
+      schedule: settings.auto_backup !== false
+        ? settings.frequency.charAt(0).toUpperCase() + settings.frequency.slice(1)
+        : 'Disabled',
+      nextBackup,
       retention: settings.retention || 30,
     })
   } catch (err) {
@@ -52,68 +81,45 @@ router.get('/stats', async (req, res) => {
   }
 })
 
-// Create backup (exports all collections as JSON, stored in GridFS)
+// POST create backup — saves to local disk file
 router.post('/create', async (req, res) => {
+  const startTime = Date.now()
   try {
-    const startTime = Date.now()
-    const db = mongoose.connection.db
-    const collections = await db.listCollections().toArray()
-    const backupData = {}
-    let totalRecords = 0
+    const { data, collections, totalRecords } = await exportAllCollections()
 
-    for (const col of collections) {
-      if (['backups', 'backupsettings', 'backupfiles.files', 'backupfiles.chunks'].includes(col.name)) continue
-      const docs = await db.collection(col.name).find({}).toArray()
-      backupData[col.name] = docs
-      totalRecords += docs.length
-    }
-
-    const jsonStr = JSON.stringify(backupData)
+    const jsonStr = JSON.stringify({ _meta: { created_at: new Date().toISOString(), db: '523' }, data })
     const sizeBytes = Buffer.byteLength(jsonStr, 'utf8')
-    const duration = Date.now() - startTime
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const filename = `backup-${timestamp}.json`
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19)
+    const filename = `backup_523_${ts}.json`
+    const filePath = path.join(BACKUP_DIR, filename)
 
-    // Store in GridFS
-    const bucket = getBucket()
-    const gridfsId = await new Promise((resolve, reject) => {
-      const uploadStream = bucket.openUploadStream(filename)
-      uploadStream.on('finish', () => resolve(uploadStream.id))
-      uploadStream.on('error', reject)
-      uploadStream.end(Buffer.from(jsonStr, 'utf8'))
-    })
+    fs.writeFileSync(filePath, jsonStr, 'utf8')
 
     const backup = new Backup({
       filename,
+      file_path: filePath,
       size: sizeBytes,
-      type: req.body.type || 'full',
-      duration,
+      type: req.body?.type || 'full',
+      duration: Date.now() - startTime,
       status: 'success',
-      collections: Object.keys(backupData).length,
+      collections,
       records: totalRecords,
-      gridfs_id: gridfsId,
+      gridfs_id: null,
     })
     await backup.save()
 
-    // Check if email notification is enabled
+    // Enforce retention: delete old local files + metadata
     const settings = await BackupSettings.findOne()
-    if (settings?.email_notifications) {
-      console.log(`[Backup] Email notification: Manual backup "${filename}" completed (${totalRecords} records, ${(sizeBytes / 1024 / 1024).toFixed(2)} MB)`)
-    }
-
-    // Auto-cleanup old backups based on retention
-    if (settings?.retention) {
-      const cutoff = new Date()
-      cutoff.setDate(cutoff.getDate() - settings.retention)
-      const oldBackups = await Backup.find({ created_at: { $lt: cutoff } })
-      for (const old of oldBackups) {
-        if (old.gridfs_id) {
-          try { await bucket.delete(old.gridfs_id) } catch {}
-        }
-        await Backup.findByIdAndDelete(old._id)
+    const retentionDays = settings?.retention || 30
+    const cutoff = new Date(Date.now() - retentionDays * 86400000)
+    const old = await Backup.find({ created_at: { $lt: cutoff } })
+    for (const b of old) {
+      if (b.file_path && fs.existsSync(b.file_path)) {
+        try { fs.unlinkSync(b.file_path) } catch {}
       }
-      if (oldBackups.length > 0) console.log(`[Backup] Cleaned ${oldBackups.length} expired backups`)
+      await Backup.findByIdAndDelete(b._id)
     }
+    if (old.length > 0) console.log(`[Backup] Purged ${old.length} backups older than ${retentionDays} days`)
 
     res.status(201).json({
       _id: backup._id,
@@ -127,54 +133,51 @@ router.post('/create', async (req, res) => {
       created_at: backup.created_at,
     })
   } catch (err) {
+    // Record the failure
+    try {
+      await new Backup({ filename: 'failed', size: 0, status: 'failed', duration: Date.now() - startTime }).save()
+    } catch {}
     res.status(500).json({ error: err.message })
   }
 })
 
-// Download backup data from GridFS
+// GET download a backup file
 router.get('/:id/download', async (req, res) => {
   try {
     const backup = await Backup.findById(req.params.id)
     if (!backup) return res.status(404).json({ error: 'Backup not found' })
 
-    if (backup.gridfs_id) {
-      const bucket = getBucket()
-      res.setHeader('Content-Type', 'application/json')
-      res.setHeader('Content-Disposition', `attachment; filename="${backup.filename}"`)
-      const downloadStream = bucket.openDownloadStream(backup.gridfs_id)
-      downloadStream.pipe(res)
-      downloadStream.on('error', () => res.status(500).json({ error: 'Failed to read backup file' }))
-    } else {
-      res.status(400).json({ error: 'No backup data available' })
+    const filePath = backup.file_path
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Backup file not found on disk' })
     }
+
+    res.setHeader('Content-Type', 'application/json')
+    res.setHeader('Content-Disposition', `attachment; filename="${backup.filename}"`)
+    fs.createReadStream(filePath).pipe(res)
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
-// Restore from backup (reads from GridFS)
+// POST restore from a backup file
 router.post('/:id/restore', async (req, res) => {
   try {
     const backup = await Backup.findById(req.params.id)
     if (!backup) return res.status(404).json({ error: 'Backup not found' })
-    if (!backup.gridfs_id) return res.status(400).json({ error: 'No backup data found' })
 
-    // Read from GridFS
-    const bucket = getBucket()
-    const chunks = []
-    await new Promise((resolve, reject) => {
-      const stream = bucket.openDownloadStream(backup.gridfs_id)
-      stream.on('data', chunk => chunks.push(chunk))
-      stream.on('end', resolve)
-      stream.on('error', reject)
-    })
-    const backupData = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    const filePath = backup.file_path
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Backup file not found on disk' })
+    }
 
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+    const backupData = raw.data || raw  // handle both new format and old format
     const db = mongoose.connection.db
     let restored = 0
 
     for (const [colName, docs] of Object.entries(backupData)) {
-      if (['backups', 'backupsettings', 'backupfiles.files', 'backupfiles.chunks'].includes(colName)) continue
+      if (SKIP_COLS.has(colName)) continue
       await db.collection(colName).deleteMany({})
       if (docs.length > 0) {
         await db.collection(colName).insertMany(docs)
@@ -188,17 +191,14 @@ router.post('/:id/restore', async (req, res) => {
   }
 })
 
-// Delete backup (also removes GridFS file)
+// DELETE a backup (removes file + metadata)
 router.delete('/:id', async (req, res) => {
   try {
     const backup = await Backup.findByIdAndDelete(req.params.id)
     if (!backup) return res.status(404).json({ error: 'Backup not found' })
 
-    if (backup.gridfs_id) {
-      try {
-        const bucket = getBucket()
-        await bucket.delete(backup.gridfs_id)
-      } catch (e) { /* GridFS file may already be gone */ }
+    if (backup.file_path && fs.existsSync(backup.file_path)) {
+      try { fs.unlinkSync(backup.file_path) } catch {}
     }
 
     res.json({ message: 'Backup deleted' })
@@ -207,20 +207,18 @@ router.delete('/:id', async (req, res) => {
   }
 })
 
-// Get backup settings
+// GET backup settings
 router.get('/settings/current', async (req, res) => {
   try {
     let settings = await BackupSettings.findOne()
-    if (!settings) {
-      settings = await BackupSettings.create({})
-    }
+    if (!settings) settings = await BackupSettings.create({})
     res.json(settings)
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
-// Save backup settings
+// PUT save backup settings
 router.put('/settings', async (req, res) => {
   try {
     let settings = await BackupSettings.findOne()

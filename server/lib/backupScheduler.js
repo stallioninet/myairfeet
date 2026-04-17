@@ -1,15 +1,25 @@
 import mongoose from 'mongoose'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import Backup from '../models/Backup.js'
 import BackupSettings from '../models/BackupSettings.js'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const BACKUP_DIR = path.join(__dirname, '..', '..', 'backups')
+if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true })
+
+const SKIP_COLS = new Set([
+  'backups', 'backupsettings',
+  'backupfiles.files', 'backupfiles.chunks',
+])
 
 let schedulerInterval = null
 
 export async function startBackupScheduler() {
-  console.log('[Backup Scheduler] Starting...')
-  // Check every hour
-  schedulerInterval = setInterval(checkAndRunBackup, 60 * 60 * 1000)
-  // Also check on startup after 30 seconds
-  setTimeout(checkAndRunBackup, 30000)
+  console.log('[Backup Scheduler] Starting... (saves to local disk, not MongoDB)')
+  schedulerInterval = setInterval(checkAndRunBackup, 60 * 60 * 1000) // check hourly
+  setTimeout(checkAndRunBackup, 30000) // also check 30 s after startup
 }
 
 export function stopBackupScheduler() {
@@ -25,92 +35,73 @@ async function checkAndRunBackup() {
     if (!settings || !settings.auto_backup) return
 
     const lastBackup = await Backup.findOne({ status: 'success' }).sort({ created_at: -1 })
-    const now = new Date()
-    let shouldRun = false
+    const hoursSince = lastBackup
+      ? (Date.now() - new Date(lastBackup.created_at)) / 3_600_000
+      : Infinity
 
-    if (!lastBackup) {
-      shouldRun = true
-    } else {
-      const lastDate = new Date(lastBackup.created_at)
-      const hoursSince = (now - lastDate) / (1000 * 60 * 60)
+    const thresholds = { daily: 24, weekly: 168, monthly: 720 }
+    const threshold = thresholds[settings.frequency] || 24
 
-      if (settings.frequency === 'daily' && hoursSince >= 24) shouldRun = true
-      else if (settings.frequency === 'weekly' && hoursSince >= 168) shouldRun = true
-      else if (settings.frequency === 'monthly' && hoursSince >= 720) shouldRun = true
-    }
-
-    if (shouldRun) {
+    if (hoursSince >= threshold) {
       console.log('[Backup Scheduler] Running scheduled backup...')
-      await runAutoBackup()
-      await cleanOldBackups(settings.retention)
+      await runAutoBackup(settings)
     }
   } catch (err) {
     console.error('[Backup Scheduler] Error:', err.message)
   }
 }
 
-async function runAutoBackup() {
+async function runAutoBackup(settings) {
+  const startTime = Date.now()
   try {
-    const startTime = Date.now()
     const db = mongoose.connection.db
-    const collections = await db.listCollections().toArray()
-    const backupData = {}
+    const colList = (await db.listCollections().toArray()).map(c => c.name).filter(n => !SKIP_COLS.has(n))
+    const data = {}
     let totalRecords = 0
 
-    for (const col of collections) {
-      if (['backups', 'backupsettings', 'backupfiles.files', 'backupfiles.chunks'].includes(col.name)) continue
-      const docs = await db.collection(col.name).find({}).toArray()
-      backupData[col.name] = docs
+    for (const name of colList) {
+      const docs = await db.collection(name).find({}).toArray()
+      data[name] = docs
       totalRecords += docs.length
     }
 
-    const jsonStr = JSON.stringify(backupData)
+    const jsonStr = JSON.stringify({ _meta: { created_at: new Date().toISOString(), db: '523' }, data })
     const sizeBytes = Buffer.byteLength(jsonStr, 'utf8')
-    const duration = Date.now() - startTime
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const filename = `auto-backup-${timestamp}.json`
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19)
+    const filename = `auto-backup_523_${ts}.json`
+    const filePath = path.join(BACKUP_DIR, filename)
 
-    // Store in GridFS
-    const bucket = new mongoose.mongo.GridFSBucket(db, { bucketName: 'backupfiles' })
-    const gridfsId = await new Promise((resolve, reject) => {
-      const uploadStream = bucket.openUploadStream(filename)
-      uploadStream.on('finish', () => resolve(uploadStream.id))
-      uploadStream.on('error', reject)
-      uploadStream.end(Buffer.from(jsonStr, 'utf8'))
-    })
+    fs.writeFileSync(filePath, jsonStr, 'utf8')
 
     const backup = new Backup({
       filename,
+      file_path: filePath,
       size: sizeBytes,
       type: 'auto',
-      duration,
+      duration: Date.now() - startTime,
       status: 'success',
-      collections: Object.keys(backupData).length,
+      collections: colList.length,
       records: totalRecords,
-      gridfs_id: gridfsId,
+      gridfs_id: null,
     })
     await backup.save()
 
-    console.log(`[Backup Scheduler] Auto backup complete: ${filename} (${(sizeBytes / 1024 / 1024).toFixed(2)} MB, ${duration}ms)`)
+    console.log(`[Backup Scheduler] Done: ${filename} (${(sizeBytes / 1_048_576).toFixed(2)} MB, ${totalRecords} records)`)
 
-    // Log notification
-    const settings = await BackupSettings.findOne()
     if (settings?.email_notifications) {
-      console.log(`[Backup Scheduler] Email notification: Backup "${filename}" completed successfully (${totalRecords} records)`)
-      // TODO: Send actual email via nodemailer/SendGrid
+      console.log(`[Backup Scheduler] Email notification: "${filename}" completed successfully`)
     }
+
+    // Enforce retention
+    await cleanOldBackups(settings?.retention || 30)
   } catch (err) {
     console.error('[Backup Scheduler] Backup failed:', err.message)
-    // Save failed backup record
     try {
       await new Backup({
-        filename: `failed-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
-        size: 0,
-        type: 'auto',
-        duration: 0,
-        status: 'failed',
-        collections: 0,
-        records: 0,
+        filename: `failed_${new Date().toISOString()}`,
+        size: 0, type: 'auto', status: 'failed',
+        duration: Date.now() - startTime,
+        collections: 0, records: 0,
       }).save()
     } catch {}
   }
@@ -118,24 +109,19 @@ async function runAutoBackup() {
 
 async function cleanOldBackups(retentionDays) {
   try {
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - (retentionDays || 30))
+    const cutoff = new Date(Date.now() - retentionDays * 86_400_000)
+    const old = await Backup.find({ created_at: { $lt: cutoff } })
+    if (old.length === 0) return
 
-    const oldBackups = await Backup.find({ created_at: { $lt: cutoff } })
-    if (oldBackups.length === 0) return
-
-    const db = mongoose.connection.db
-    const bucket = new mongoose.mongo.GridFSBucket(db, { bucketName: 'backupfiles' })
-
-    for (const backup of oldBackups) {
-      // Delete GridFS file
-      if (backup.gridfs_id) {
-        try { await bucket.delete(backup.gridfs_id) } catch {}
+    for (const b of old) {
+      // Delete local file
+      if (b.file_path && fs.existsSync(b.file_path)) {
+        try { fs.unlinkSync(b.file_path) } catch {}
       }
-      await Backup.findByIdAndDelete(backup._id)
+      await Backup.findByIdAndDelete(b._id)
     }
 
-    console.log(`[Backup Scheduler] Cleaned ${oldBackups.length} old backups (retention: ${retentionDays} days)`)
+    console.log(`[Backup Scheduler] Purged ${old.length} backups older than ${retentionDays} days`)
   } catch (err) {
     console.error('[Backup Scheduler] Cleanup error:', err.message)
   }

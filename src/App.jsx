@@ -33,6 +33,7 @@ import InvoiceList from './pages/invoices/InvoiceList'
 import OutstandingInvoices from './pages/invoices/OutstandingInvoices'
 import OutstandEmails from './pages/invoices/OutstandEmails'
 import CommissionList from './pages/commissions/CommissionList'
+import CommissionReport from './pages/commissions/CommissionReport'
 import Reports from './pages/reports/Reports'
 import CustomerReports from './pages/customers/CustomerReports'
 import SalesRepReports from './pages/sales/SalesRepReports'
@@ -97,6 +98,7 @@ function App() {
           <Route path="/invoices/outstanding" element={<OutstandingInvoices />} />
           <Route path="/invoices/outstand-emails" element={<OutstandEmails />} />
           <Route path="/commissions" element={<CommissionList />} />
+          <Route path="/commissions/report" element={<CommissionReport />} />
           <Route path="/pilot-programs" element={<PilotProgramList />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/customers/reports" element={<CustomerReports />} />

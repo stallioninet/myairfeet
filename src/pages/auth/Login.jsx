@@ -3,54 +3,43 @@ import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../../lib/api'
 
-const roleEmails = {
-  admin: 'admin@company.com',
-  'sales-rep': 'sarah.johnson@company.com',
-  'data-entry': 'jane.smith@company.com',
+// Quick-fill shortcuts with real credentials from the database
+const roleDefaults = {
+  admin:        { email: 'admin@stallioni.com',       password: 'superuser' },
+  'sales-rep':  { email: 'tami.airfeet@gmail.com',    password: 'superuser' },
+  'data-entry': { email: 'gomathi@stallioni.com',      password: 'abc123'   },
 }
 
 export default function Login({ onLogin }) {
   const navigate = useNavigate()
-  const [email, setEmail] = useState('admin@company.com')
-  const [password, setPassword] = useState('password')
-  const [role, setRole] = useState('admin')
+  const [email, setEmail]       = useState(roleDefaults.admin.email)
+  const [password, setPassword] = useState(roleDefaults.admin.password)
+  const [showPwd, setShowPwd]   = useState(false)
+  const [role, setRole]         = useState('admin')
   const [remember, setRemember] = useState(true)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading]   = useState(false)
 
   function handleRoleChange(newRole) {
     setRole(newRole)
-    setEmail(roleEmails[newRole] || 'admin@company.com')
+    const def = roleDefaults[newRole] || roleDefaults.admin
+    setEmail(def.email)
+    setPassword(def.password)
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!email.trim() || !password.trim()) {
-      toast.error('Please enter email and password')
-      return
-    }
+    if (!email.trim()) { toast.error('Please enter your email'); return }
+    if (!password)     { toast.error('Please enter your password'); return }
 
     setLoading(true)
-
     try {
-      const user = await api.loginUser(email.trim())
+      const user = await api.loginUser(email.trim(), password)
       localStorage.setItem('ct_user', JSON.stringify(user))
       if (onLogin) onLogin(user)
       toast.success(`Welcome back, ${user.first_name}!`)
       navigate('/dashboard')
     } catch (err) {
-      // For demo: allow login with any credentials
-      const demoUser = {
-        _id: 'demo',
-        first_name: 'Admin',
-        last_name: 'User',
-        email: email.trim(),
-        level: role,
-        status: 'active',
-      }
-      localStorage.setItem('ct_user', JSON.stringify(demoUser))
-      if (onLogin) onLogin(demoUser)
-      toast.success('Welcome back!')
-      navigate('/dashboard')
+      toast.error(err.message || 'Invalid email or password')
     }
     setLoading(false)
   }
@@ -67,44 +56,16 @@ export default function Login({ onLogin }) {
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="mb-3">
-            <label className="form-label">Email Address</label>
-            <div className="input-group">
-              <span className="input-group-text"><i className="bi bi-envelope"></i></span>
-              <input
-                type="email"
-                className="form-control"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="admin@company.com"
-              />
-            </div>
-          </div>
-
-          <div className="mb-3">
-            <label className="form-label">Password</label>
-            <div className="input-group">
-              <span className="input-group-text"><i className="bi bi-lock"></i></span>
-              <input
-                type="password"
-                className="form-control"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="Enter password"
-              />
-            </div>
-          </div>
-
-          {/* Role Selector for Demo */}
+          {/* Quick-access role selector */}
           <div className="mb-3">
             <label className="form-label" style={{ fontSize: '.82rem', fontWeight: 600, color: '#475569' }}>
-              <i className="bi bi-person-badge me-1"></i>Demo: Select User Role
+              <i className="bi bi-person-badge me-1"></i>Quick Select Account
             </label>
             <div className="role-selector">
               {[
-                { value: 'admin', icon: 'bi-shield-lock-fill', label: 'Admin', sub: 'Full access' },
-                { value: 'sales-rep', icon: 'bi-person-workspace', label: 'Sales Rep', sub: 'Sales focus' },
-                { value: 'data-entry', icon: 'bi-keyboard', label: 'Data Entry', sub: 'Entry tasks' },
+                { value: 'admin',      icon: 'bi-shield-lock-fill',  label: 'Admin',      sub: 'Full access'  },
+                { value: 'sales-rep',  icon: 'bi-person-workspace',  label: 'Sales Rep',  sub: 'Sales focus'  },
+                { value: 'data-entry', icon: 'bi-keyboard',          label: 'Data Entry', sub: 'Entry tasks'  },
               ].map(r => (
                 <div className="role-option" key={r.value}>
                   <input
@@ -125,6 +86,47 @@ export default function Login({ onLogin }) {
             </div>
           </div>
 
+          {/* Email */}
+          <div className="mb-3">
+            <label className="form-label">Email Address</label>
+            <div className="input-group">
+              <span className="input-group-text"><i className="bi bi-envelope"></i></span>
+              <input
+                type="email"
+                className="form-control"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="username"
+              />
+            </div>
+          </div>
+
+          {/* Password */}
+          <div className="mb-3">
+            <label className="form-label">Password</label>
+            <div className="input-group">
+              <span className="input-group-text"><i className="bi bi-lock"></i></span>
+              <input
+                type={showPwd ? 'text' : 'password'}
+                className="form-control"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                className="input-group-text btn btn-outline-secondary border-start-0"
+                style={{ cursor: 'pointer' }}
+                onClick={() => setShowPwd(v => !v)}
+                tabIndex={-1}
+              >
+                <i className={`bi ${showPwd ? 'bi-eye-slash' : 'bi-eye'}`}></i>
+              </button>
+            </div>
+          </div>
+
           <div className="d-flex justify-content-between align-items-center mb-4">
             <div className="form-check">
               <input
@@ -138,7 +140,7 @@ export default function Login({ onLogin }) {
                 Remember me
               </label>
             </div>
-            <a href="#" onClick={e => { e.preventDefault(); toast('Reset link sent!', { icon: '\u2709\uFE0F' }) }} style={{ fontSize: '.85rem' }}>
+            <a href="#" onClick={e => e.preventDefault()} style={{ fontSize: '.85rem', color: '#94a3b8', cursor: 'default' }}>
               Forgot password?
             </a>
           </div>

@@ -1,10 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../../lib/api'
+import { isSalesRepUser, getStoredUser, resolveRepId } from '../../lib/repAuth'
 import Pagination from '../../components/Pagination'
 
 export default function OutstandingInvoices() {
+  const [_user] = useState(() => getStoredUser())
+  const isSalesRep = isSalesRepUser(_user)
+  const repIdRef = useRef(null)
   const [allInvoices, setAllInvoices] = useState([])
   const [loading, setLoading] = useState(true)
   const [customers, setCustomers] = useState([])
@@ -25,12 +29,17 @@ export default function OutstandingInvoices() {
   const [fInvNumber, setFInvNumber] = useState('')
   const [fShow, setFShow] = useState('outstanding') // outstanding, archive, all
 
-  useEffect(() => { fetchData(); fetchLookups() }, [])
+  useEffect(() => {
+    fetchLookups()
+    if (!isSalesRep) { fetchData(); return }
+    resolveRepId(_user.email).then(id => { repIdRef.current = id ?? null; fetchData() })
+  }, [])
 
   async function fetchData() {
     setLoading(true)
     try {
-      const data = await api.getInvoices()
+      const params = (isSalesRep && repIdRef.current) ? { rep_id: repIdRef.current } : {}
+      const data = await api.getInvoices(params)
       setAllInvoices(data || [])
     } catch (err) {
       toast.error('Failed to load: ' + err.message)

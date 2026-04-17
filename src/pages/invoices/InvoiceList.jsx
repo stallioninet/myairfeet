@@ -1,20 +1,25 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import html2pdf from 'html2pdf.js'
 import { api } from '../../lib/api'
+import { isSalesRepUser, getStoredUser, resolveRepId } from '../../lib/repAuth'
 import Pagination from '../../components/Pagination'
 import PageChartHeader from '../../components/PageChartHeader'
 import SlidePanel from '../../components/SlidePanel'
 
 export default function InvoiceList() {
+  const [_user] = useState(() => getStoredUser())
+  const isSalesRep = isSalesRepUser(_user)
+  const repIdRef = useRef(null)
+  const initDoneRef = useRef(false)
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({ total: 0, shipped: 0, paid: 0, unpaid: 0, totalAmount: 0 })
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
-  const [year, setYear] = useState('')
+  const [year, setYear] = useState(isSalesRep ? String(new Date().getFullYear() - 1) : '')
   const [years, setYears] = useState([])
   const [deleteInv, setDeleteInv] = useState(null)
   const [viewInv, setViewInv] = useState(null)
@@ -73,8 +78,15 @@ export default function InvoiceList() {
     } catch { setCustContacts([]); setCustAddresses([]) }
   }
 
-  useEffect(() => { fetchYears(); fetchCustomers(); fetchAnalytics() }, [])
-  useEffect(() => { fetchData() }, [year])
+  useEffect(() => {
+    fetchYears(); fetchCustomers()
+    if (isSalesRep) {
+      resolveRepId(_user.email).then(id => { repIdRef.current = id ?? null; initDoneRef.current = true; fetchData(); fetchAnalytics(id ?? null) })
+    } else {
+      initDoneRef.current = true; fetchData(); fetchAnalytics(null)
+    }
+  }, [])
+  useEffect(() => { if (initDoneRef.current) fetchData() }, [year])
 
   async function fetchYears() {
     try {
@@ -83,10 +95,11 @@ export default function InvoiceList() {
     } catch {}
   }
 
-  async function fetchAnalytics() {
+  async function fetchAnalytics(repId) {
     setAnalyticsLoading(true)
     try {
-      const data = await api.getInvoiceTopCustomers()
+      const params = repId ? { rep_id: repId } : {}
+      const data = await api.getInvoiceTopCustomers(params)
       setTopCustomers(data || { topByCount: [], topByOutstanding: [] })
     } catch {}
     setAnalyticsLoading(false)
@@ -97,11 +110,22 @@ export default function InvoiceList() {
     try {
       const params = {}
       if (year) params.year = year
-      const [data, statsData] = await Promise.all([
-        api.getInvoices(params),
-        api.getInvoiceStats(),
-      ])
-      setInvoices(data || [])
+      if (isSalesRep && repIdRef.current) params.rep_id = repIdRef.current
+      const data = await api.getInvoices(params)
+      const invoiceList = data || []
+      let statsData
+      if (isSalesRep) {
+        statsData = {
+          total: invoiceList.length,
+          paid: invoiceList.filter(inv => (inv.paid_value || '').toUpperCase() === 'PAID').length,
+          unpaid: invoiceList.filter(inv => (inv.paid_value || '').toUpperCase() !== 'PAID').length,
+          shipped: invoiceList.filter(inv => inv.inv_status === 'Shipped').length,
+          totalAmount: invoiceList.reduce((s, inv) => s + (parseFloat(inv.net_amount) || 0), 0),
+        }
+      } else {
+        statsData = await api.getInvoiceStats()
+      }
+      setInvoices(invoiceList)
       setStats(statsData || {})
       // Load file map for customer PO upload icons
       try { const fm = await api.getInvoiceFileMap(); setPoFileMap(fm || {}) } catch {}
@@ -817,7 +841,7 @@ export default function InvoiceList() {
       </div>
 
       {/* ─── Invoice Insights ─── */}
-      <div className="row g-3 mt-1">
+      {!isSalesRep && <div className="row g-3 mt-1">
         {/* Card A: Most Invoices */}
         <div className="col-12 col-lg-6">
           <div className="card border-0 shadow-sm rounded-4 h-100">
@@ -915,7 +939,7 @@ export default function InvoiceList() {
             </div>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Create/Edit Invoice Modal */}
       {showCreate && (<>

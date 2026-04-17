@@ -19,6 +19,14 @@ router.get('/', async (req, res) => {
     }
     if (req.query.status === 'shipped') filter.inv_status = 'Shipped'
     else if (req.query.status === 'active') filter.inv_status = { $ne: 'Shipped' }
+    if (req.query.rep_id) {
+      const repId = parseInt(req.query.rep_id)
+      const maps = await mongoose.connection.db.collection('cust_sales_rep_map')
+        .find({ sales_rep_id: repId, status: 1 })
+        .project({ company_id: 1 }).toArray()
+      const companyIds = [...new Set(maps.map(m => m.company_id).filter(v => v != null))]
+      filter.company_id = { $in: companyIds }
+    }
 
     const invoices = await col().find(filter).sort({ legacy_id: -1 }).toArray()
 
@@ -248,7 +256,19 @@ router.post('/:id/customer-po', async (req, res) => {
 // GET invoice analytics — top customers by volume & outstanding balance
 router.get('/analytics/top-customers', async (req, res) => {
   try {
+    // If rep_id provided, scope to that rep's company IDs
+    let matchStage = {}
+    if (req.query.rep_id) {
+      const repId = parseInt(req.query.rep_id)
+      const maps = await mongoose.connection.db.collection('cust_sales_rep_map')
+        .find({ sales_rep_id: repId, status: 1 })
+        .project({ company_id: 1 }).toArray()
+      const companyIds = [...new Set(maps.map(m => m.company_id).filter(v => v != null))]
+      matchStage = { company_id: { $in: companyIds } }
+    }
+
     const pipeline = [
+      ...(Object.keys(matchStage).length ? [{ $match: matchStage }] : []),
       {
         $group: {
           _id: '$company_id',

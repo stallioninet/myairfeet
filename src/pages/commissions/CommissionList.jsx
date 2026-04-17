@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../../lib/api'
+import { isSalesRepUser, getStoredUser, resolveRepId } from '../../lib/repAuth'
 import Pagination from '../../components/Pagination'
 import PageChartHeader from '../../components/PageChartHeader'
 
 export default function CommissionList() {
+  const [_user] = useState(() => getStoredUser())
+  const isSalesRep = isSalesRepUser(_user)
+  const repIdRef = useRef(null)
   const [commissions, setCommissions] = useState([])
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({ total: 0, totalComm: 0 })
@@ -31,13 +35,17 @@ export default function CommissionList() {
   const [payForm, setPayForm] = useState({ commission_paid_date: '', received_date: '', received_amount: '', paid_mode: '', partial_comm_total: '', mark_paid: false })
   const [payRepAmounts, setPayRepAmounts] = useState({}) // {rep_id: paid_amount}
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => {
+    if (!isSalesRep) { fetchData(); return }
+    resolveRepId(_user.email).then(id => { repIdRef.current = id ?? null; fetchData() })
+  }, [])
 
   async function fetchData() {
     setLoading(true)
     try {
+      const params = (isSalesRep && repIdRef.current) ? { rep_id: repIdRef.current } : {}
       const [data, statsData] = await Promise.all([
-        api.getCommissions(),
+        api.getCommissions(params),
         api.getCommissionStats(),
       ])
       setCommissions(data || [])
@@ -365,11 +373,11 @@ export default function CommissionList() {
             onClick: () => setFilterPaid('unpaid')
           }
         ]}
-        actions={
+        actions={!isSalesRep && (
           <button className="btn btn-primary px-4 shadow-sm" style={{ borderRadius: 12, fontWeight: 600 }} onClick={openCreate}>
             <i className="bi bi-plus-lg me-1"></i> Add Commission
           </button>
-        }
+        )}
       />
 
       {/* Search & Filter Badge */}
@@ -454,15 +462,19 @@ export default function CommissionList() {
                     </div>
                   </td>
                   <td className="text-center">
-                    <button className="btn btn-sm btn-action btn-outline-primary me-1" title="Edit" onClick={() => openEdit(comm)}>
-                      <i className="bi bi-pencil"></i>
-                    </button>
+                    {!isSalesRep && (
+                      <button className="btn btn-sm btn-action btn-outline-primary me-1" title="Edit" onClick={() => openEdit(comm)}>
+                        <i className="bi bi-pencil"></i>
+                      </button>
+                    )}
                     <button className="btn btn-sm btn-action btn-outline-info me-1" title="View" onClick={() => openView(comm)}>
                       <i className="bi bi-eye"></i>
                     </button>
-                    <button className="btn btn-sm btn-action btn-outline-danger" title="Delete" onClick={() => setDeleteComm(comm)}>
-                      <i className="bi bi-trash"></i>
-                    </button>
+                    {!isSalesRep && (
+                      <button className="btn btn-sm btn-action btn-outline-danger" title="Delete" onClick={() => setDeleteComm(comm)}>
+                        <i className="bi bi-trash"></i>
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

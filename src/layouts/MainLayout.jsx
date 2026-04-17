@@ -38,7 +38,7 @@ export default function MainLayout({ user, onLogout }) {
         className={`sidebar-overlay${sidebarOpen ? ' open' : ''}`}
         onClick={() => setSidebarOpen(false)}
       />
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} />
       <div className="main-content">
         <TopHeader user={user} onLogout={onLogout} onToggleSidebar={() => setSidebarOpen(true)} />
         <div className="page-body">

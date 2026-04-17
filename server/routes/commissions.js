@@ -23,7 +23,14 @@ router.get('/map', async (req, res) => {
 // GET all commissions with invoice & customer data
 router.get('/', async (req, res) => {
   try {
-    const commissions = await summaryCol().find({ status: { $in: [1, '1'] } }).sort({ legacy_id: -1 }).toArray()
+    const summaryFilter = { status: { $in: [1, '1'] } }
+    if (req.query.rep_id) {
+      const repId = parseInt(req.query.rep_id)
+      const repDetails = await detailCol().find({ sales_rep_id: repId, status: { $in: [1, '1'] } }).project({ po_id: 1 }).toArray()
+      const poIds = [...new Set(repDetails.map(d => d.po_id).filter(v => v != null))]
+      summaryFilter.po_id = { $in: poIds }
+    }
+    const commissions = await summaryCol().find(summaryFilter).sort({ legacy_id: -1 }).toArray()
 
     // Batch fetch invoice data
     const poIds = [...new Set(commissions.map(c => c.po_id).filter(Boolean))]
@@ -112,6 +119,106 @@ router.get('/lookup/invoices', async (req, res) => {
     customers.forEach(c => { custMap[c.legacy_id] = c.company_name })
     const data = invoices.map(inv => ({ ...inv, company_name: custMap[inv.company_id] || '' }))
     res.json(data)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET commission report — per-rep invoice detail for commissions
+router.get('/report', async (req, res) => {
+  try {
+    const { rep_id, rep_email, status, date_from, date_to } = req.query
+
+    const commFilter = { status: { $in: [1, '1'] } }
+
+    if (rep_id) {
+      commFilter.sales_rep_id = parseInt(rep_id)
+    } else if (rep_email) {
+      const rep = await repCol().findOne({ email: rep_email })
+      if (!rep) return res.json([])
+      commFilter.sales_rep_id = rep.legacy_id
+    }
+
+    const details = await detailCol().find(commFilter).toArray()
+    if (!details.length) return res.json([])
+
+    const poIds = [...new Set(details.map(d => d.po_id).filter(v => v != null))]
+
+    // Build invoice query with optional paid-status and date filters
+    const invQuery = { legacy_id: { $in: poIds } }
+    if (status === 'paid') invQuery.paid_value = 'PAID'
+    else if (status === 'unpaid') invQuery.paid_value = { $not: { $regex: /^PAID$/i } }
+    if (date_from || date_to) {
+      invQuery.shipped_date = {}
+      if (date_from) invQuery.shipped_date.$gte = date_from
+      if (date_to) invQuery.shipped_date.$lte = date_to
+    }
+
+    const invoices = await invoiceCol().find(invQuery).toArray()
+    const invMap = {}
+    invoices.forEach(inv => { invMap[inv.legacy_id] = inv })
+
+    const matchedDetails = details.filter(d => invMap[d.po_id])
+    if (!matchedDetails.length) return res.json([])
+
+    const companyIds = [...new Set(invoices.map(i => i.company_id).filter(Boolean))]
+    const repIds = [...new Set(matchedDetails.map(d => d.sales_rep_id).filter(Boolean))]
+
+    const [customers, contacts, reps] = await Promise.all([
+      custCol().find({ legacy_id: { $in: companyIds } }).project({ legacy_id: 1, company_name: 1 }).toArray(),
+      mongoose.connection.db.collection('customer_contacts').find({ company_id: { $in: companyIds } }).project({ company_id: 1, contact_number: 1, contact_person: 1 }).toArray(),
+      repCol().find({ legacy_id: { $in: repIds } }).project({ legacy_id: 1, first_name: 1, last_name: 1, user_cust_code: 1 }).toArray(),
+    ])
+
+    const custMap = {}
+    customers.forEach(c => { custMap[c.legacy_id] = c })
+
+    const contactMap = {}
+    contacts.forEach(c => {
+      if (c.company_id != null && !contactMap[c.company_id]) {
+        contactMap[c.company_id] = c.contact_number || ''
+      }
+    })
+
+    const repMap = {}
+    reps.forEach(r => { repMap[r.legacy_id] = r })
+
+    const rows = matchedDetails.map(d => {
+      const inv = invMap[d.po_id] || {}
+      const cust = custMap[inv.company_id] || {}
+      const rep = repMap[d.sales_rep_id] || {}
+      const subtotal = parseFloat(inv.net_amount) || 0
+      const shippingTax = (parseFloat(inv.shipping_costs) || 0) + (parseFloat(inv.sales_tax_amount) || 0)
+      const isPaid = (inv.paid_value || '').toUpperCase() === 'PAID'
+      const commission = parseFloat(d.total_price) || 0
+
+      return {
+        commission_detail_id: String(d._id),
+        po_id: d.po_id,
+        sales_rep_id: d.sales_rep_id,
+        rep_name: rep.first_name ? `${rep.first_name} ${rep.last_name || ''}`.trim() : `Rep #${d.sales_rep_id}`,
+        rep_code: rep.user_cust_code || '',
+        company_name: cust.company_name || '',
+        contact_phone: contactMap[inv.company_id] || '',
+        invoice_number: inv.invoice_number || '',
+        shipped_date: inv.shipped_date || '',
+        subtotal,
+        shipping_and_tax: shippingTax,
+        invoice_total: subtotal + shippingTax,
+        commission,
+        is_paid: isPaid,
+        paid_date: inv.paid_date || '',
+      }
+    })
+
+    rows.sort((a, b) => {
+      if (a.rep_name !== b.rep_name) return a.rep_name.localeCompare(b.rep_name)
+      const da = a.shipped_date ? new Date(a.shipped_date).getTime() : 0
+      const db2 = b.shipped_date ? new Date(b.shipped_date).getTime() : 0
+      return da - db2
+    })
+
+    res.json(rows)
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

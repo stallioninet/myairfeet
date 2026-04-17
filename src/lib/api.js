@@ -18,7 +18,7 @@ export const api = {
   updateUser: (id, data) => request(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteUser: (id) => request(`/users/${id}`, { method: 'DELETE' }),
   checkUniqueUser: (field, value, excludeId) => request(`/users/check-unique?field=${field}&value=${encodeURIComponent(value)}${excludeId ? '&exclude_id=' + excludeId : ''}`),
-  loginUser: (email) => request('/users/login', { method: 'POST', body: JSON.stringify({ email }) }),
+  loginUser: (email, password) => request('/users/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   getUserStats: () => request('/users/stats/counts'),
   seedUsers: () => request('/users/seed', { method: 'POST' }),
 
@@ -174,9 +174,17 @@ export const api = {
   deleteCostInfo: (id) => request(`/cost-info/${id}`, { method: 'DELETE' }),
 
   // Customers
-  getCustomers: (status) => request('/customers' + (status ? '?status=' + status : '')),
+  getCustomers: (statusOrParams) => {
+    if (!statusOrParams) return request('/customers')
+    if (typeof statusOrParams === 'string') return request(`/customers?status=${statusOrParams}`)
+    const q = new URLSearchParams(statusOrParams).toString()
+    return request(`/customers${q ? '?' + q : ''}`)
+  },
   getCustomer: (id) => request(`/customers/${id}`),
-  getCustomerStats: () => request('/customers/stats'),
+  getCustomerStats: (params) => {
+    const q = params && Object.keys(params).length ? new URLSearchParams(params).toString() : ''
+    return request(`/customers/stats${q ? '?' + q : ''}`)
+  },
   getCustomerTypes: () => request('/customers/types'),
   createCustomer: (data) => request('/customers', { method: 'POST', body: JSON.stringify(data) }),
   updateCustomer: (id, data) => request(`/customers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -279,7 +287,10 @@ export const api = {
   getInvoiceStats: () => request('/invoices/stats'),
   getInvoiceYears: () => request('/invoices/years'),
   getInvoiceFileMap: () => request('/invoices/file-map'),
-  getInvoiceTopCustomers: () => request('/invoices/analytics/top-customers'),
+  getInvoiceTopCustomers: (params) => {
+    const q = params && Object.keys(params).length ? new URLSearchParams(params).toString() : ''
+    return request(`/invoices/analytics/top-customers${q ? '?' + q : ''}`)
+  },
   getInvoice: (id) => request(`/invoices/${id}`),
   getInvoiceView: (id) => request(`/invoices/${id}/invoice`),
   updateInvoiceStatus: (id, inv_status) => request(`/invoices/${id}/status`, { method: 'PUT', body: JSON.stringify({ inv_status }) }),
@@ -294,7 +305,10 @@ export const api = {
   updateInvoice: (id, data) => request(`/invoices/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
   // Commissions
-  getCommissions: () => request('/commissions'),
+  getCommissions: (params = {}) => {
+    const q = new URLSearchParams(params).toString()
+    return request(`/commissions${q ? '?' + q : ''}`)
+  },
   getCommissionMap: () => request('/commissions/map'),
   getCommissionStats: () => request('/commissions/stats'),
   getCommission: (id) => request(`/commissions/${id}`),
@@ -306,6 +320,10 @@ export const api = {
   createCommission: (data) => request('/commissions', { method: 'POST', body: JSON.stringify(data) }),
   updateCommission: (id, data) => request(`/commissions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   addCommissionPayment: (id, data) => request(`/commissions/${id}/payment`, { method: 'POST', body: JSON.stringify(data) }),
+  getCommissionReport: (params = {}) => {
+    const q = new URLSearchParams(params).toString()
+    return request(`/commissions/report${q ? '?' + q : ''}`)
+  },
 
   // Pilot Programs
   getPilotPrograms: (status) => request('/pilot-programs' + (status ? '?status=' + status : '')),
