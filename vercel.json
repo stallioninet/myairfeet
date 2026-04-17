@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run build && npm prune --omit=dev --omit=optional",
+  "buildCommand": "npm run build && rm -rf node_modules/mongodb-client-encryption node_modules/@mongodb-js/zstd node_modules/kerberos node_modules/snappy && npm prune --omit=dev",
   "functions": {
     "api/index.js": {
       "maxDuration": 30
