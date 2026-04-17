@@ -10,8 +10,10 @@ const router = express.Router()
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // Backups are stored as local JSON files — NOT in MongoDB (prevents quota bloat)
-const BACKUP_DIR = path.join(__dirname, '..', '..', 'backups')
-if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true })
+const BACKUP_DIR = process.env.VERCEL
+  ? '/tmp/backups'
+  : path.join(__dirname, '..', '..', 'backups')
+try { if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true }) } catch {}
 
 const SKIP_COLS = new Set([
   'backups', 'backupsettings',
