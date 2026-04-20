@@ -9,6 +9,18 @@ const custCol = () => mongoose.connection.db.collection('customers')
 const repCol = () => mongoose.connection.db.collection('sales_reps')
 const payRepCol = () => mongoose.connection.db.collection('invoice_payment_reps')
 const payCol = () => mongoose.connection.db.collection('invoice_payments')
+const userCol = () => mongoose.connection.db.collection('users')
+
+// Resolves caller identity from X-User-Email header.
+// Returns { isSalesRep, repLegacyId } — repLegacyId is null for non-reps.
+async function resolveCallerRep(req) {
+  const email = req.headers['x-user-email']
+  if (!email) return { isSalesRep: false, repLegacyId: null }
+  const user = await userCol().findOne({ email })
+  if (!user || user.level !== 'sales-rep') return { isSalesRep: false, repLegacyId: null }
+  const rep = await repCol().findOne({ email })
+  return { isSalesRep: true, repLegacyId: rep ? rep.legacy_id : null }
+}
 
 // GET commission map (lightweight: po_id -> _id) for invoice page
 router.get('/map', async (req, res) => {
@@ -129,14 +141,22 @@ router.get('/report', async (req, res) => {
   try {
     const { rep_id, rep_email, status, date_from, date_to } = req.query
 
+    // Server-side enforcement: sales-reps are locked to their own rep ID
+    // regardless of what rep_id param was passed.
+    const caller = await resolveCallerRep(req)
     const commFilter = { status: { $in: [1, '1'] } }
 
-    if (rep_id) {
-      commFilter.sales_rep_id = parseInt(rep_id)
-    } else if (rep_email) {
-      const rep = await repCol().findOne({ email: rep_email })
-      if (!rep) return res.json([])
-      commFilter.sales_rep_id = rep.legacy_id
+    if (caller.isSalesRep) {
+      if (caller.repLegacyId == null) return res.json([])
+      commFilter.sales_rep_id = caller.repLegacyId
+    } else {
+      if (rep_id) {
+        commFilter.sales_rep_id = parseInt(rep_id)
+      } else if (rep_email) {
+        const rep = await repCol().findOne({ email: rep_email })
+        if (!rep) return res.json([])
+        commFilter.sales_rep_id = rep.legacy_id
+      }
     }
 
     const details = await detailCol().find(commFilter).toArray()
@@ -219,6 +239,76 @@ router.get('/report', async (req, res) => {
     })
 
     res.json(rows)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET line-item breakdown for a specific commission detail record
+router.get('/report-breakdown/:commDetailId', async (req, res) => {
+  try {
+    const { commDetailId } = req.params
+    const { rep_id } = req.query
+
+    const detail = await detailCol().findOne({ _id: new mongoose.Types.ObjectId(commDetailId) })
+    if (!detail) return res.status(404).json({ error: 'Commission detail not found' })
+
+    // Server-side enforcement: sales-reps can only fetch their own breakdowns
+    const caller = await resolveCallerRep(req)
+    if (caller.isSalesRep) {
+      if (caller.repLegacyId == null || caller.repLegacyId !== detail.sales_rep_id) {
+        return res.status(403).json({ error: 'Access denied' })
+      }
+    } else if (rep_id && parseInt(rep_id) !== detail.sales_rep_id) {
+      // Fallback check for non-authenticated callers passing rep_id explicitly
+      return res.status(403).json({ error: 'Access denied' })
+    }
+
+    const poId = detail.po_id
+    const salesRepId = detail.sales_rep_id
+
+    const poItemsCol = mongoose.connection.db.collection('po_items')
+    const commItemDetCol = mongoose.connection.db.collection('commission_item_details')
+    const commRepDetCol = mongoose.connection.db.collection('commission_rep_details')
+
+    const [items, commItemDets, commRepDets] = await Promise.all([
+      poItemsCol.find({ po_id: poId }).sort({ sort_order: 1 }).toArray(),
+      commItemDetCol.find({ po_id: poId }).toArray(),
+      commRepDetCol.find({ po_id: poId, sales_rep_id: salesRepId }).toArray(),
+    ])
+
+    const commRepMap = {}
+    commRepDets.forEach(d => { commRepMap[d.item_id] = d })
+    const commItemMap = {}
+    commItemDets.forEach(d => { commItemMap[d.item_id] = d })
+
+    const lineItems = items.map(it => {
+      const itemId = it.item_id || it.legacy_id
+      const qty = parseInt(it.item_qty || it.qty) || 0
+      const unitCost = parseFloat(it.item_unit_cost || it.unit_cost) || 0
+      const basePrice = parseFloat(commItemMap[itemId]?.base_price) || 0
+      const commPerUnit = parseFloat(commRepMap[itemId]?.commission_price) || 0
+      return {
+        item_id: itemId,
+        item_name: it.po_item_name || it.item_name || '',
+        qty,
+        unit_cost: unitCost,
+        base_price: basePrice,
+        line_total: unitCost * qty,
+        comm_per_unit: commPerUnit,
+        comm_total: commPerUnit * qty,
+      }
+    })
+
+    res.json({
+      po_id: poId,
+      sales_rep_id: salesRepId,
+      total_commission: parseFloat(detail.total_price) || 0,
+      has_item_detail: commRepDets.length > 0,
+      commission_percentage: detail.commission_percentage || '',
+      commission_dollar: detail.commission_dollar || '',
+      line_items: lineItems,
+    })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

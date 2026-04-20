@@ -1,8 +1,17 @@
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 
+function getStoredUserEmail() {
+  try { return JSON.parse(localStorage.getItem('ct_user') || '{}').email || '' } catch { return '' }
+}
+
 async function request(endpoint, options = {}) {
+  const email = getStoredUserEmail()
   const res = await fetch(`${API_URL}${endpoint}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(email ? { 'X-User-Email': email } : {}),
+      ...options.headers,
+    },
     ...options,
   })
   const data = await res.json()
@@ -323,6 +332,10 @@ export const api = {
   getCommissionReport: (params = {}) => {
     const q = new URLSearchParams(params).toString()
     return request(`/commissions/report${q ? '?' + q : ''}`)
+  },
+  getCommissionBreakdown: (commDetailId, repId) => {
+    const q = repId != null ? `?rep_id=${repId}` : ''
+    return request(`/commissions/report-breakdown/${commDetailId}${q}`)
   },
 
   // Pilot Programs
