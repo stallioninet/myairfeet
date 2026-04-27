@@ -428,10 +428,11 @@ router.post('/', async (req, res) => {
     const result = await col().insertOne(doc)
     doc._id = result.insertedId
 
-    // Save line items if provided
+    // Save line items if provided — clear any orphaned items first (defensive: handles legacy_id reuse)
     const lineItems = req.body.lineItems
+    const db = mongoose.connection.db
+    await db.collection('po_items').deleteMany({ po_id: nextId })
     if (lineItems && Array.isArray(lineItems) && lineItems.length > 0) {
-      const db = mongoose.connection.db
       const docs = lineItems.map((it, idx) => ({
         po_id: nextId,
         item_name: it.item_name || '',
@@ -573,12 +574,17 @@ router.put('/:id/due-date', async (req, res) => {
   }
 })
 
-// DELETE invoice
+// DELETE invoice — also cleans up associated po_items to prevent orphaned records
+// causing data bleed when legacy_ids are reused by newly created invoices.
 router.delete('/:id', async (req, res) => {
   try {
     const inv = await col().findOne({ _id: new mongoose.Types.ObjectId(req.params.id) })
     if (!inv) return res.status(404).json({ error: 'Invoice not found' })
-    await col().deleteOne({ _id: inv._id })
+    const db = mongoose.connection.db
+    await Promise.all([
+      col().deleteOne({ _id: inv._id }),
+      db.collection('po_items').deleteMany({ po_id: inv.legacy_id }),
+    ])
     res.json({ success: true })
   } catch (err) {
     res.status(500).json({ error: err.message })

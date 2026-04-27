@@ -6,7 +6,7 @@ const router = express.Router()
 // Get all level defaults - must be before /:userId
 router.get('/levels/all', async (req, res) => {
   try {
-    const defaults = await UserAccess.find({ user: { $regex: /^level_/ } })
+    const defaults = await UserAccess.find({ user: { $regex: '^level_', $options: 'i' } })
     res.json(defaults)
   } catch (err) {
     res.status(500).json({ error: err.message })

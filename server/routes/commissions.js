@@ -70,6 +70,8 @@ router.get('/', async (req, res) => {
       const totalComm = comm.total_commission || parseFloat(comm.total_commission_percentage) || parseFloat(comm.total_commission_dollar) || 0
       const totalPaid = paidMap[String(comm.po_id)] || 0
       const balance = totalComm - totalPaid
+      // Round to cents to avoid floating-point residue (e.g. 5.68e-14) misclassifying fully-paid commissions
+      const balanceCents = Math.round(balance * 100) / 100
 
       return {
         ...comm,
@@ -81,10 +83,10 @@ router.get('/', async (req, res) => {
         company_name: companyName,
         company_id: inv.company_id || '',
         total_comm: totalComm,
-        total_paid: totalPaid,
-        balance: balance,
+        total_paid: Math.round(totalPaid * 100) / 100,
+        balance: balanceCents,
         // Payment status: 0=unpaid, 1=partial, 2=full
-        pay_status: totalPaid <= 0 ? 0 : (balance <= 0 ? 2 : 1),
+        pay_status: totalPaid <= 0 ? 0 : (balanceCents <= 0 ? 2 : 1),
       }
     })
 
@@ -98,9 +100,20 @@ router.get('/', async (req, res) => {
 router.get('/stats', async (req, res) => {
   try {
     const total = await summaryCol().countDocuments({ status: { $in: [1, '1'] } })
+    // Bug 6: coalesce all three commission fields so records with total_commission=0 are counted
     const pipeline = [
       { $match: { status: { $in: [1, '1'] } } },
-      { $group: { _id: null, totalComm: { $sum: '$total_commission' } } },
+      { $group: { _id: null, totalComm: { $sum: {
+        $cond: {
+          if: { $gt: ['$total_commission', 0] },
+          then: '$total_commission',
+          else: { $cond: {
+            if: { $gt: [{ $toDouble: { $ifNull: ['$total_commission_percentage', '0'] } }, 0] },
+            then: { $toDouble: { $ifNull: ['$total_commission_percentage', '0'] } },
+            else: { $toDouble: { $ifNull: ['$total_commission_dollar', '0'] } },
+          }},
+        },
+      }}}}
     ]
     const result = await summaryCol().aggregate(pipeline).toArray()
     const totalComm = result[0]?.totalComm || 0
@@ -423,14 +436,19 @@ router.put('/:id/unpaid', async (req, res) => {
 // POST create commission
 router.post('/', async (req, res) => {
   try {
-    const { po_id, company_id, reps } = req.body
+    const { po_id, company_id, reps, save_status, item_details } = req.body
     // reps = [{ sales_rep_id, total_price }]
+    // item_details = [{ item_id, base_price, total_price, rep_details: [{ sales_rep_id, commission_price, total_commission_price }] }]
     if (!po_id) return res.status(400).json({ error: 'Invoice/PO is required' })
     if (!reps || !reps.length) return res.status(400).json({ error: 'At least one sales rep is required' })
 
+    // Bug 7: Reject negative commission amounts
+    const hasNegative = reps.some(r => (parseFloat(r.total_price) || 0) < 0)
+    if (hasNegative) return res.status(400).json({ error: 'Commission amounts cannot be negative' })
+
     const totalComm = reps.reduce((s, r) => s + (parseFloat(r.total_price) || 0), 0)
 
-    // Create summary
+    // Create summary — Bug 3: persist save_status and percentage/dollar fields
     const maxDoc = await summaryCol().find({}).sort({ legacy_id: -1 }).limit(1).toArray()
     const nextId = (maxDoc[0]?.legacy_id || 0) + 1
 
@@ -441,8 +459,9 @@ router.post('/', async (req, res) => {
       total_commission: totalComm,
       commission_paid_status: 0,
       comm_paid_date: null,
-      total_commission_percentage: '',
-      total_commission_dollar: '',
+      save_status: save_status || 'default',
+      total_commission_percentage: save_status === 'percent' ? totalComm : '',
+      total_commission_dollar: save_status === 'dollar' ? totalComm : '',
       status: 1,
       created_at: new Date(),
     }
@@ -466,6 +485,37 @@ router.post('/', async (req, res) => {
     })
     if (detDocs.length) await detailCol().insertMany(detDocs)
 
+    // Bug 5: Write item-level breakdown when provided
+    if (item_details && item_details.length) {
+      const commItemDetCol = mongoose.connection.db.collection('commission_item_details')
+      const commRepDetCol = mongoose.connection.db.collection('commission_rep_details')
+      const poIdInt = parseInt(po_id)
+
+      const itemDetDocs = item_details.map(id => ({
+        po_id: poIdInt,
+        item_id: id.item_id,
+        base_price: id.base_price,
+        total_price: id.total_price,
+      }))
+      if (itemDetDocs.length) await commItemDetCol.insertMany(itemDetDocs)
+
+      const repDetDocs = []
+      item_details.forEach(id => {
+        ;(id.rep_details || []).forEach(rd => {
+          repDetDocs.push({
+            po_id: poIdInt,
+            item_id: id.item_id,
+            sales_rep_id: parseInt(rd.sales_rep_id),
+            commission_price: rd.commission_price,
+            total_commission_price: rd.total_commission_price,
+            commission_price_percentage: rd.commission_price_percentage || 0,
+            rep_save_status: rd.rep_save_status || 'default',
+          })
+        })
+      })
+      if (repDetDocs.length) await commRepDetCol.insertMany(repDetDocs)
+    }
+
     res.status(201).json({ success: true, total_commission: totalComm })
   } catch (err) {
     res.status(400).json({ error: err.message })
@@ -478,21 +528,30 @@ router.put('/:id', async (req, res) => {
     const comm = await summaryCol().findOne({ _id: new mongoose.Types.ObjectId(req.params.id) })
     if (!comm) return res.status(404).json({ error: 'Commission not found' })
 
-    const { reps, save_status } = req.body
+    const { reps, save_status, item_details } = req.body
     if (!reps || !reps.length) return res.status(400).json({ error: 'At least one sales rep is required' })
+
+    // Bug 7: Reject negative commission amounts
+    const hasNegative = reps.some(r => (parseFloat(r.total_price) || 0) < 0)
+    if (hasNegative) return res.status(400).json({ error: 'Commission amounts cannot be negative' })
 
     const totalComm = reps.reduce((s, r) => s + (parseFloat(r.total_price) || 0), 0)
 
-    // Update summary
-    const updateFields = { total_commission: totalComm }
-    if (save_status) {
-      updateFields.save_status = save_status
-      if (save_status === 'percent') updateFields.total_commission_percentage = totalComm
-      else if (save_status === 'dollar') updateFields.total_commission_dollar = totalComm
+    // Update summary — Bug 3/PUT: always persist save_status
+    const updateFields = { total_commission: totalComm, save_status: save_status || 'default' }
+    if (save_status === 'percent') {
+      updateFields.total_commission_percentage = totalComm
+      updateFields.total_commission_dollar = ''
+    } else if (save_status === 'dollar') {
+      updateFields.total_commission_dollar = totalComm
+      updateFields.total_commission_percentage = ''
+    } else {
+      updateFields.total_commission_percentage = ''
+      updateFields.total_commission_dollar = ''
     }
     await summaryCol().updateOne({ _id: comm._id }, { $set: updateFields })
 
-    // Delete old details and insert new
+    // Delete old detail records and insert new
     await detailCol().deleteMany({ po_id: comm.po_id })
     const maxDet = await detailCol().find({}).sort({ legacy_id: -1 }).limit(1).toArray()
     let detId = (maxDet[0]?.legacy_id || 0)
@@ -510,6 +569,41 @@ router.put('/:id', async (req, res) => {
       }
     })
     if (detDocs.length) await detailCol().insertMany(detDocs)
+
+    // Bug 8: Delete stale item breakdown, then re-insert with fresh data
+    const commItemDetCol = mongoose.connection.db.collection('commission_item_details')
+    const commRepDetCol = mongoose.connection.db.collection('commission_rep_details')
+    await Promise.all([
+      commItemDetCol.deleteMany({ po_id: comm.po_id }),
+      commRepDetCol.deleteMany({ po_id: comm.po_id }),
+    ])
+
+    // Bug 5: Write new item-level breakdown when provided
+    if (item_details && item_details.length) {
+      const itemDetDocs = item_details.map(id => ({
+        po_id: comm.po_id,
+        item_id: id.item_id,
+        base_price: id.base_price,
+        total_price: id.total_price,
+      }))
+      if (itemDetDocs.length) await commItemDetCol.insertMany(itemDetDocs)
+
+      const repDetDocs = []
+      item_details.forEach(id => {
+        ;(id.rep_details || []).forEach(rd => {
+          repDetDocs.push({
+            po_id: comm.po_id,
+            item_id: id.item_id,
+            sales_rep_id: parseInt(rd.sales_rep_id),
+            commission_price: rd.commission_price,
+            total_commission_price: rd.total_commission_price,
+            commission_price_percentage: rd.commission_price_percentage || 0,
+            rep_save_status: rd.rep_save_status || 'default',
+          })
+        })
+      })
+      if (repDetDocs.length) await commRepDetCol.insertMany(repDetDocs)
+    }
 
     res.json({ success: true, total_commission: totalComm })
   } catch (err) {
@@ -581,7 +675,7 @@ router.post('/:id/payment', async (req, res) => {
   }
 })
 
-// DELETE commission (soft delete)
+// DELETE commission (soft delete summary + hard delete associated records)
 router.delete('/:id', async (req, res) => {
   try {
     const result = await summaryCol().findOneAndUpdate(
@@ -590,6 +684,21 @@ router.delete('/:id', async (req, res) => {
       { returnDocument: 'after' }
     )
     if (!result) return res.status(404).json({ error: 'Commission not found' })
+
+    // Clean up all associated records for this PO so a re-created commission starts fresh.
+    // Use $in with both int and string variants to handle any po_id type inconsistency.
+    const poId    = result.po_id
+    const poIdInt = parseInt(poId) || poId
+    const poIdStr = String(poId)
+    const poMatch = { po_id: { $in: [poIdInt, poIdStr] } }
+    await Promise.all([
+      detailCol().deleteMany(poMatch),
+      payRepCol().deleteMany(poMatch),
+      payCol().deleteMany(poMatch),
+      mongoose.connection.db.collection('commission_item_details').deleteMany(poMatch),
+      mongoose.connection.db.collection('commission_rep_details').deleteMany(poMatch),
+    ])
+
     res.json({ success: true })
   } catch (err) {
     res.status(500).json({ error: err.message })

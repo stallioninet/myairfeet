@@ -145,7 +145,7 @@ router.delete('/:id', async (req, res) => {
     const db = mongoose.connection.db
     const poItemCount = await db.collection('po_items').countDocuments({ item_id: product.legacy_id || 0 })
     if (poItemCount > 0) return res.status(400).json({ error: `Cannot delete: used in ${poItemCount} PO item(s)` })
-    const mapCount = await db.collection('item_size_maps').countDocuments({ item: req.params.id })
+    const mapCount = await db.collection('itemsizemaps').countDocuments({ product_item: new mongoose.Types.ObjectId(req.params.id) })
     if (mapCount > 0) return res.status(400).json({ error: `Cannot delete: ${mapCount} size mapping(s) reference this product` })
     await ProductItem.findByIdAndDelete(req.params.id)
     res.json({ message: 'Product deleted' })

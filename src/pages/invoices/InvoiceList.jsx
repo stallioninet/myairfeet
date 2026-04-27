@@ -7,6 +7,7 @@ import { isSalesRepUser, getStoredUser, resolveRepId } from '../../lib/repAuth'
 import Pagination from '../../components/Pagination'
 import PageChartHeader from '../../components/PageChartHeader'
 import SlidePanel from '../../components/SlidePanel'
+import CommissionGrid from '../../components/CommissionGrid'
 
 export default function InvoiceList() {
   const [_user] = useState(() => getStoredUser())
@@ -45,10 +46,22 @@ export default function InvoiceList() {
   const [editCommInv, setEditCommInv] = useState(null)
   const [editCommData, setEditCommData] = useState(null)
   const [editCommLoading, setEditCommLoading] = useState(false)
-  const [editCommReps, setEditCommReps] = useState([]) // [{sales_rep_id, total_price, rep_name, rep_code}]
+  const [editCommReps, setEditCommReps] = useState([])
   const [editCalcMode, setEditCalcMode] = useState('default')
   const [editCommItems, setEditCommItems] = useState([])
-  const [editGrid, setEditGrid] = useState({}) // grid[itemIdx][repId] = { base, commission, percent }
+  const [editGrid, setEditGrid] = useState({})
+  const [editRepTypes, setEditRepTypes] = useState({})
+  const [editInitialGrid, setEditInitialGrid] = useState({})
+  const [editInitialRepTypes, setEditInitialRepTypes] = useState({})
+  // Add Commission (create new) from invoice page
+  const [addCommInv, setAddCommInv] = useState(null)
+  const [addCommLoading, setAddCommLoading] = useState(false)
+  const [addCommReps, setAddCommReps] = useState([])
+  const [addCommItems, setAddCommItems] = useState([])
+  const [addGrid, setAddGrid] = useState({})
+  const [addCalcMode, setAddCalcMode] = useState('default')
+  const [addRepRows, setAddRepRows] = useState([])
+  const [addRepTypes, setAddRepTypes] = useState({})
   // Add Payment form inside View Commission
   const [showAddPayment, setShowAddPayment] = useState(false)
   const [payForm, setPayForm] = useState({ commission_paid_date: '', received_amount: '', received_date: '', paid_mode: '', partial_comm_total: '', mark_paid: false })
@@ -148,30 +161,58 @@ export default function InvoiceList() {
     try {
       const data = await api.getCommission(commId)
       setEditCommData(data)
-      const reps = (data.details || []).map(d => ({ sales_rep_id: String(d.sales_rep_id), total_price: String(d.total_price || ''), rep_name: d.rep_name || '', rep_code: d.rep_code || '', legacy_id: d.sales_rep_id }))
+      const savedMode = data.save_status || 'default'
+      setEditCalcMode(savedMode)
+      const reps = (data.details || []).map(d => ({ sales_rep_id: String(d.sales_rep_id), total_price: String(d.total_price || ''), rep_name: d.rep_name || '', rep_code: d.rep_code || '' }))
       setEditCommReps(reps)
-      // Set calc mode from saved data
-      setEditCalcMode(data.save_status || 'default')
-      // Build items and grid
       const items = data.items || []
       setEditCommItems(items)
       const commItemDets = data.commItemDets || []
       const commRepDets = data.commRepDets || []
       const g = {}
+      const loadedRepTypes = {}
       items.forEach((item, idx) => {
         g[idx] = {}
         const itemId = item.item_id || item.legacy_id
         const itemDet = commItemDets.find(d => d.item_id === itemId)
+        const baseVal = itemDet ? (parseFloat(itemDet.base_price) || 0) : 0
+        const qty = item.qty || 0
+        const itemNetValue = qty * baseVal
         reps.forEach(r => {
           const repDet = commRepDets.find(rd => rd.item_id === itemId && rd.sales_rep_id === parseInt(r.sales_rep_id))
-          g[idx][r.sales_rep_id] = {
-            base: String(itemDet?.base_price ?? item.unit_cost ?? ''),
-            commission: String(repDet?.commission_price || ''),
-            percent: String(repDet?.commission_price_percentage || ''),
+          const commPrice = parseFloat(repDet?.commission_price || 0)
+          const commTotalPrice = parseFloat(repDet?.total_commission_price || 0)
+          const commPctPrice = parseFloat(repDet?.commission_price_percentage || 0)
+          const repStatus = repDet?.rep_save_status || savedMode || 'default'
+          if (savedMode === 'default' && repStatus === 'percent') {
+            loadedRepTypes[r.sales_rep_id] = 'percent'
+          } else {
+            loadedRepTypes[r.sales_rep_id] = loadedRepTypes[r.sales_rep_id] || 'dollar'
           }
+          let gridCommission, gridPercent
+          if (savedMode === 'default') {
+            if (repStatus === 'percent') {
+              gridCommission = ''
+              gridPercent = commPctPrice ? String(commPctPrice) : ''
+            } else {
+              gridCommission = commPrice ? String(commPrice) : ''
+              gridPercent = ''
+            }
+          } else if (savedMode === 'percent') {
+            gridCommission = commTotalPrice ? String(commTotalPrice) : ''
+            gridPercent = itemNetValue > 0 && commTotalPrice
+              ? String(Math.round(commTotalPrice / itemNetValue * 10000) / 100) : ''
+          } else {
+            gridCommission = commTotalPrice ? String(commTotalPrice) : ''
+            gridPercent = ''
+          }
+          g[idx][r.sales_rep_id] = { base: String(baseVal ?? 0), commission: gridCommission, percent: gridPercent }
         })
       })
       setEditGrid(g)
+      setEditInitialGrid(g)
+      setEditInitialRepTypes(loadedRepTypes)
+      setEditRepTypes(loadedRepTypes)
     } catch (err) { toast.error('Failed to load: ' + err.message) }
     setEditCommLoading(false)
   }
@@ -188,32 +229,308 @@ export default function InvoiceList() {
     Object.keys(editGrid).forEach(idx => {
       const cell = editGrid[idx]?.[repId]
       if (!cell) return
+      const item = editCommItems[parseInt(idx)]
+      const qty = item?.qty || 0
       if (editCalcMode === 'default') {
-        const item = editCommItems[parseInt(idx)]
-        total += (parseFloat(cell.commission) || 0) * (item?.qty || 0)
+        const type = editRepTypes[repId] || 'dollar'
+        if (type === 'percent') {
+          const rawBase = cell.base
+          const baseVal = (rawBase !== '' && rawBase != null) ? (parseFloat(rawBase) || 0) : 0
+          const iTotal = Math.max(0, (item?.unit_cost || 0) - baseVal)
+          total += Math.round((parseFloat(cell.percent) || 0) / 100 * iTotal * qty * 100) / 100
+        } else {
+          total += (parseFloat(cell.commission) || 0) * qty
+        }
       } else {
         total += parseFloat(cell.commission) || 0
       }
     })
     return total
   }
+  function editHandleModeChange(newMode) {
+    if (newMode === editCalcMode) return
+    if (editCommItems.length > 0 && editCommReps.length > 0) {
+      if (newMode === 'default' && Object.keys(editInitialGrid).length > 0) {
+        setEditGrid(editInitialGrid)
+        setEditRepTypes(editInitialRepTypes)
+      } else if (newMode === 'percent' && Object.keys(editInitialGrid).length > 0) {
+        const pGrid = {}
+        Object.keys(editInitialGrid).forEach(idx => {
+          pGrid[idx] = {}
+          Object.keys(editInitialGrid[idx] || {}).forEach(repId => {
+            pGrid[idx][repId] = { base: editInitialGrid[idx][repId]?.base || '', percent: editInitialGrid[idx][repId]?.percent || '', commission: '' }
+          })
+        })
+        setEditGrid(pGrid)
+      } else if (newMode === 'dollar' && Object.keys(editInitialGrid).length > 0) {
+        const dGrid = {}
+        Object.keys(editInitialGrid).forEach(idx => {
+          dGrid[idx] = {}
+          const item = editCommItems[parseInt(idx)]
+          const qty = item?.qty || 0
+          Object.keys(editInitialGrid[idx] || {}).forEach(repId => {
+            const orig = editInitialGrid[idx][repId] || {}
+            const origType = editInitialRepTypes[repId] || 'dollar'
+            const total = origType === 'dollar' ? Math.round((parseFloat(orig.commission) || 0) * qty * 100) / 100 : 0
+            dGrid[idx][repId] = { base: orig.base || '', commission: total > 0 ? String(total) : '', percent: '' }
+          })
+        })
+        setEditGrid(dGrid)
+      } else {
+        setEditGrid(prev => {
+          const cleared = {}
+          Object.keys(prev).forEach(idx => {
+            cleared[idx] = {}
+            Object.keys(prev[idx] || {}).forEach(repId => {
+              cleared[idx][repId] = { base: prev[idx][repId]?.base || '' }
+            })
+          })
+          return cleared
+        })
+        setEditRepTypes({})
+      }
+    }
+    setEditCalcMode(newMode)
+  }
+  function editHandleRepTypeChange(repId, type) {
+    setEditRepTypes(prev => ({ ...prev, [repId]: type }))
+    setEditGrid(prev => {
+      const next = { ...prev }
+      Object.keys(next).forEach(idx => {
+        if (next[idx]?.[repId]) {
+          next[idx] = { ...next[idx], [repId]: { ...next[idx][repId], commission: '', percent: '' } }
+        }
+      })
+      return next
+    })
+  }
+
+  // Returns true if this rep has any entered value across all items
+  function editRepHasValue(repId) {
+    const type = editRepTypes[repId] || 'dollar'
+    return Object.keys(editGrid).some(idx => {
+      const cell = editGrid[idx]?.[repId] || {}
+      if (type === 'percent') return (parseFloat(cell.percent) || 0) > 0
+      return (parseFloat(cell.commission) || 0) > 0
+    })
+  }
 
   async function handleSaveEditComm() {
     if (!editCommData) return
-    let validReps
+    let validReps, itemDetails = []
+
     if (editCommItems.length > 0 && editCommReps.length > 0) {
+      // Build item-level breakdown first
+      itemDetails = editCommItems.map((item, idx) => {
+        const itemId = item.item_id || item.legacy_id
+        const rawBaseE = editGrid[idx]?.[editCommReps[0]?.sales_rep_id]?.base
+        const baseVal = (rawBaseE !== '' && rawBaseE != null) ? (parseFloat(rawBaseE) || 0) : 0
+        const qty = item.qty || 0
+        const iTotal = Math.max(0, (item.unit_cost || 0) - baseVal)
+
+        const repDetails = editCommReps.map(r => {
+          let commPerUnit, commItemTotal, commPricePercentage = 0, repSaveStatus = 'default'
+          if (editCalcMode === 'default') {
+            const type = editRepTypes[r.sales_rep_id] || 'dollar'
+            if (type === 'percent') {
+              const pctVal = parseFloat(editGrid[idx]?.[r.sales_rep_id]?.percent) || 0
+              commPerUnit = 0
+              commItemTotal = Math.round(pctVal / 100 * iTotal * qty * 100) / 100
+              commPricePercentage = pctVal
+              repSaveStatus = 'percent'
+            } else {
+              commPerUnit = parseFloat(editGrid[idx]?.[r.sales_rep_id]?.commission) || 0
+              commItemTotal = Math.round(commPerUnit * qty * 100) / 100
+            }
+          } else {
+            const commTotal = parseFloat(editGrid[idx]?.[r.sales_rep_id]?.commission) || 0
+            commPerUnit = qty > 0 ? Math.round(commTotal / qty * 10000) / 10000 : 0
+            commItemTotal = Math.round(commTotal * 100) / 100
+          }
+          return { sales_rep_id: parseInt(r.sales_rep_id), commission_price: commPerUnit, total_commission_price: commItemTotal, commission_price_percentage: commPricePercentage, rep_save_status: repSaveStatus }
+        // Keep a rep if it has a dollar amount OR a valid percent value entered
+        }).filter(r => r.total_commission_price > 0 || r.commission_price_percentage > 0)
+
+        const totalPrice = repDetails.reduce((s, r) => s + r.total_commission_price, 0)
+        return { item_id: itemId, base_price: baseVal, total_price: Math.round(totalPrice * 100) / 100, rep_details: repDetails }
+      // Keep an item if it has any rep detail saved
+      }).filter(i => i.rep_details.length > 0)
+
+      // Build validReps: include a rep if it has a non-zero total OR it's a percent rep with an entered % value
       validReps = editCommReps.map(r => ({
         sales_rep_id: parseInt(r.sales_rep_id),
         total_price: Math.round(editGetRepTotal(r.sales_rep_id) * 100) / 100,
-      })).filter(r => r.total_price > 0)
+        _keep: editRepHasValue(r.sales_rep_id),
+      })).filter(r => r.total_price > 0 || r._keep)
+        .map(r => ({ sales_rep_id: r.sales_rep_id, total_price: r.total_price }))
     } else {
       validReps = editCommReps.filter(r => r.sales_rep_id && parseFloat(r.total_price) > 0).map(r => ({ sales_rep_id: parseInt(r.sales_rep_id), total_price: parseFloat(r.total_price) || 0 }))
     }
+
     if (!validReps.length) { toast.error('Add at least one rep with commission'); return }
     try {
-      await api.updateCommission(editCommData._id, { reps: validReps, save_status: editCalcMode })
+      await api.updateCommission(editCommData._id, { reps: validReps, save_status: editCalcMode, item_details: itemDetails })
       toast.success('Commission updated')
       setEditCommInv(null); setEditCommData(null)
+      fetchData()
+    } catch (err) { toast.error(err.message) }
+  }
+
+  // ── Add Commission (create new) from Invoice page ──
+  async function openAddComm(inv) {
+    setAddCommLoading(true)
+    setAddCommInv(inv)
+    setAddCalcMode('default')
+    setAddGrid({})
+    setAddRepRows([])
+    try {
+      const [repsData, invData] = await Promise.all([
+        api.getCommissionReps(),
+        api.getInvoice(inv._id),
+      ])
+      const reps = repsData || []
+      setAddCommReps(reps)
+      const items = (invData.items || []).map(it => ({
+        ...it,
+        item_id: it.item_id || it.legacy_id,
+        item_name: it.po_item_name || it.item_name || '',
+        qty: parseInt(it.item_qty || it.qty) || 0,
+        unit_cost: parseFloat(it.item_unit_cost || it.unit_cost) || 0,
+      })).filter(it => it.item_name || it.qty)
+      setAddCommItems(items)
+      // Build empty grid
+      const g = {}
+      items.forEach((item, idx) => {
+        g[idx] = {}
+        reps.forEach(r => { g[idx][r.legacy_id] = { base: '0', commission: '', percent: '' } })
+      })
+      setAddGrid(g)
+      // Fallback rep rows (used when no items)
+      setAddRepRows(reps.map(r => ({ sales_rep_id: String(r.legacy_id), total_price: '' })))
+    } catch (err) { toast.error('Failed to load: ' + err.message) }
+    setAddCommLoading(false)
+  }
+
+  function addUpdateGridCell(itemIdx, repId, value) {
+    setAddGrid(prev => ({ ...prev, [itemIdx]: { ...prev[itemIdx], [repId]: { ...(prev[itemIdx]?.[repId] || {}), commission: value } } }))
+  }
+  function addUpdateGridBase(itemIdx, repId, value) {
+    setAddGrid(prev => ({ ...prev, [itemIdx]: { ...prev[itemIdx], [repId]: { ...(prev[itemIdx]?.[repId] || {}), base: value } } }))
+  }
+  function addGetRepTotal(repId) {
+    let total = 0
+    Object.keys(addGrid).forEach(idx => {
+      const cell = addGrid[idx]?.[repId]
+      if (!cell) return
+      const item = addCommItems[parseInt(idx)]
+      const qty = item?.qty || 0
+      if (addCalcMode === 'default') {
+        const type = addRepTypes[repId] || 'dollar'
+        if (type === 'percent') {
+          const rawBase = cell.base
+          const baseVal = (rawBase !== '' && rawBase != null) ? (parseFloat(rawBase) || 0) : 0
+          const iTotal = Math.max(0, (item?.unit_cost || 0) - baseVal)
+          total += Math.round((parseFloat(cell.percent) || 0) / 100 * iTotal * qty * 100) / 100
+        } else {
+          total += (parseFloat(cell.commission) || 0) * qty
+        }
+      } else {
+        total += parseFloat(cell.commission) || 0
+      }
+    })
+    return total
+  }
+  function addHandleModeChange(newMode) {
+    if (newMode === addCalcMode) return
+    if (addCommItems.length > 0 && addCommReps.length > 0) {
+      setAddGrid(prev => {
+        const cleared = {}
+        Object.keys(prev).forEach(idx => {
+          cleared[idx] = {}
+          Object.keys(prev[idx] || {}).forEach(repId => {
+            cleared[idx][repId] = { base: prev[idx][repId]?.base || '' }
+          })
+        })
+        return cleared
+      })
+    }
+    setAddRepTypes({})
+    setAddCalcMode(newMode)
+  }
+  function addHandleRepTypeChange(repId, type) {
+    setAddRepTypes(prev => ({ ...prev, [repId]: type }))
+    setAddGrid(prev => {
+      const next = { ...prev }
+      Object.keys(next).forEach(idx => {
+        if (next[idx]?.[repId]) {
+          next[idx] = { ...next[idx], [repId]: { ...next[idx][repId], commission: '', percent: '' } }
+        }
+      })
+      return next
+    })
+  }
+
+  async function handleSaveAddComm() {
+    if (!addCommInv) return
+    let validReps, itemDetails = []
+
+    if (addCommItems.length > 0 && addCommReps.length > 0) {
+      itemDetails = addCommItems.map((item, idx) => {
+        const itemId = item.item_id || item.legacy_id
+        const rawBaseA = addGrid[idx]?.[addCommReps[0]?.legacy_id]?.base
+        const baseVal = (rawBaseA !== '' && rawBaseA != null) ? (parseFloat(rawBaseA) || 0) : 0
+        const qty = item.qty || 0
+        const iTotal = Math.max(0, (item.unit_cost || 0) - baseVal)
+        const repDetails = addCommReps.map(r => {
+          let commPerUnit, commItemTotal, commPricePercentage = 0, repSaveStatus = 'default'
+          if (addCalcMode === 'default') {
+            const type = addRepTypes[r.legacy_id] || 'dollar'
+            if (type === 'percent') {
+              const pctVal = parseFloat(addGrid[idx]?.[r.legacy_id]?.percent) || 0
+              commPerUnit = 0
+              commItemTotal = Math.round(pctVal / 100 * iTotal * qty * 100) / 100
+              commPricePercentage = pctVal
+              repSaveStatus = 'percent'
+            } else {
+              commPerUnit = parseFloat(addGrid[idx]?.[r.legacy_id]?.commission) || 0
+              commItemTotal = Math.round(commPerUnit * qty * 100) / 100
+            }
+          } else {
+            const commTotal = parseFloat(addGrid[idx]?.[r.legacy_id]?.commission) || 0
+            commPerUnit = qty > 0 ? Math.round(commTotal / qty * 10000) / 10000 : 0
+            commItemTotal = Math.round(commTotal * 100) / 100
+          }
+          return { sales_rep_id: r.legacy_id, commission_price: commPerUnit, total_commission_price: commItemTotal, commission_price_percentage: commPricePercentage, rep_save_status: repSaveStatus }
+        }).filter(r => r.total_commission_price > 0 || r.commission_price_percentage > 0)
+        const totalPrice = repDetails.reduce((s, r) => s + r.total_commission_price, 0)
+        return { item_id: itemId, base_price: baseVal, total_price: Math.round(totalPrice * 100) / 100, rep_details: repDetails }
+      }).filter(i => i.rep_details.length > 0)
+
+      validReps = addCommReps.map(r => ({
+        sales_rep_id: r.legacy_id,
+        total_price: Math.round(addGetRepTotal(r.legacy_id) * 100) / 100,
+        _keep: Object.keys(addGrid).some(idx => {
+          const type = addRepTypes[r.legacy_id] || 'dollar'
+          const cell = addGrid[idx]?.[r.legacy_id] || {}
+          return type === 'percent' ? (parseFloat(cell.percent) || 0) > 0 : (parseFloat(cell.commission) || 0) > 0
+        }),
+      })).filter(r => r.total_price > 0 || r._keep)
+        .map(r => ({ sales_rep_id: r.sales_rep_id, total_price: r.total_price }))
+    } else {
+      validReps = addRepRows.filter(r => r.sales_rep_id && parseFloat(r.total_price) > 0).map(r => ({ sales_rep_id: parseInt(r.sales_rep_id), total_price: parseFloat(r.total_price) || 0 }))
+    }
+
+    if (!validReps.length) { toast.error('Add at least one rep with commission'); return }
+    try {
+      await api.createCommission({
+        po_id: addCommInv.legacy_id,
+        company_id: addCommInv.company_id,
+        reps: validReps,
+        save_status: addCalcMode,
+        item_details: itemDetails,
+      })
+      toast.success('Commission created')
+      setAddCommInv(null)
       fetchData()
     } catch (err) { toast.error(err.message) }
   }
@@ -776,7 +1093,7 @@ export default function InvoiceList() {
                       </button>
                     </>) : (
                       <button className="btn btn-sm" title="Add Commission" style={{ padding: '2px 6px', background: '#4CB755', color: '#fff', border: '1px solid #4CB755' }}
-                        onClick={() => { window.location.href = '/commissions' }}>
+                        onClick={() => openAddComm(inv)}>
                         <i className="bi bi-plus"></i>
                       </button>
                     )}
@@ -1374,6 +1691,86 @@ export default function InvoiceList() {
         )}
       </SlidePanel>
 
+      {/* ═══════ Add Commission Modal ═══════ */}
+      {(addCommInv || addCommLoading) && (<>
+        <div className="modal-backdrop fade show" style={{ zIndex: 1060 }}></div>
+        <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1065, overflowY: 'auto', height: '100vh' }}>
+          <div className="modal-dialog modal-xl" style={{ margin: '1rem auto' }}>
+            <div className="modal-content border-0 shadow">
+              <div className="modal-header text-white" style={{ background: 'linear-gradient(135deg, #4CB755, #38a046)' }}>
+                <h5 className="modal-title fw-bold"><i className="bi bi-plus-circle me-2"></i>Add Commission</h5>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setAddCommInv(null)}></button>
+              </div>
+              <div className="modal-body">
+                {addCommLoading ? (
+                  <div className="text-center py-5"><div className="spinner-border text-success"></div></div>
+                ) : addCommInv ? (() => {
+                  const fmtM = v => '$' + (parseFloat(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                  return (
+                    <div>
+                      {/* Invoice Summary */}
+                      <table className="table table-bordered mb-4" style={{ fontSize: 13 }}>
+                        <thead><tr style={{ background: '#3b82f6', color: '#fff' }}>
+                          <th className="text-center">Invoice #</th><th className="text-center">PO #</th>
+                          <th className="text-center">PO $</th><th className="text-center">PO Date</th>
+                          <th className="text-center">Customer Name</th>
+                        </tr></thead>
+                        <tbody><tr>
+                          <td className="text-center">{addCommInv.invoice_number || '-'}</td>
+                          <td className="text-center">{addCommInv.po_number || '-'}</td>
+                          <td className="text-center">{fmtM(addCommInv.net_amount)}</td>
+                          <td className="text-center">{fmtDate(addCommInv.po_date)}</td>
+                          <td className="text-center">{addCommInv.company_name || '-'}</td>
+                        </tr></tbody>
+                      </table>
+
+                      {addCommItems.length > 0 && addCommReps.length > 0 ? (
+                        <CommissionGrid
+                          mode={addCalcMode}
+                          onModeChange={addHandleModeChange}
+                          items={addCommItems}
+                          reps={addCommReps.map(r => ({ repId: r.legacy_id, repName: `${r.first_name||''} ${r.last_name||''}`.trim(), repCode: r.user_cust_code || '' }))}
+                          grid={addGrid}
+                          onGridChange={(itemIdx, repId, patch) => setAddGrid(prev => ({ ...prev, [itemIdx]: { ...prev[itemIdx], [repId]: { ...(prev[itemIdx]?.[repId] || {}), ...patch } } }))}
+                          repTypes={addRepTypes}
+                          onRepTypeChange={addHandleRepTypeChange}
+                          poNetAmount={parseFloat(addCommInv?.net_amount || 0)}
+                          getRepTotal={addGetRepTotal}
+                          fmtMoney={fmtMoney}
+                        />
+                      ) : addCommReps.length > 0 ? (
+                        <table className="table table-sm table-bordered" style={{ fontSize: 13 }}>
+                          <thead className="bg-light"><tr><th>Sales Rep</th><th>Code</th><th style={{ width: 200 }}>Commission ($)</th></tr></thead>
+                          <tbody>
+                            {addCommReps.map(r => (
+                              <tr key={r.legacy_id}>
+                                <td>{r.first_name} {r.last_name}</td>
+                                <td><span className="badge bg-secondary-subtle text-secondary">{r.user_cust_code || '-'}</span></td>
+                                <td><input type="number" step="0.01" className="form-control form-control-sm"
+                                  value={addRepRows.find(rr => String(rr.sales_rep_id) === String(r.legacy_id))?.total_price || ''}
+                                  onChange={e => setAddRepRows(prev => prev.map(rr => String(rr.sales_rep_id) === String(r.legacy_id) ? { ...rr, total_price: e.target.value } : rr))}
+                                  placeholder="0.00" /></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot><tr className="fw-bold"><td colSpan="2" className="text-end">Total:</td><td>{fmtMoney(addRepRows.reduce((s, r) => s + (parseFloat(r.total_price) || 0), 0))}</td></tr></tfoot>
+                        </table>
+                      ) : (
+                        <p className="text-muted text-center py-3">No data available</p>
+                      )}
+                    </div>
+                  )
+                })() : null}
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-success px-4" onClick={handleSaveAddComm}>Save Commission</button>
+                <button className="btn btn-outline-secondary" onClick={() => setAddCommInv(null)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </>)}
+
       {/* Edit Commission Modal */}
       {(editCommInv || editCommLoading) && (<>
         <div className="modal-backdrop fade show" style={{ zIndex: 1060 }}></div>
@@ -1406,104 +1803,21 @@ export default function InvoiceList() {
                         </tr></tbody>
                       </table>
 
-                      {/* Mode buttons - matching old PHP */}
-                      <div className="d-flex justify-content-end gap-2 mb-3">
-                        <button type="button" className="btn px-4" style={{ background: '#1abc9c', color: '#fff', opacity: editCalcMode === 'percent' ? 1 : 0.65 }} onClick={() => setEditCalcMode('percent')}>Pay by % of Total</button>
-                        <button type="button" className="btn px-4" style={{ background: '#1abc9c', color: '#fff', opacity: editCalcMode === 'dollar' ? 1 : 0.65 }} onClick={() => setEditCalcMode('dollar')}>Pay by $</button>
-                        <button type="button" className="btn px-4" style={{ background: '#333', color: '#fff', opacity: editCalcMode === 'default' ? 1 : 0.65 }} onClick={() => setEditCalcMode('default')}>Default View</button>
-                      </div>
-
-                      {/* Commission Grid - items x reps */}
                       {editCommItems.length > 0 && editCommReps.length > 0 ? (
-                        <div className="table-responsive">
-                          <table className="table table-bordered table-sm mb-4" style={{ fontSize: 12, textAlign: 'center' }}>
-                            <thead>
-                              <tr>
-                                <th style={{ minWidth: 150, background: '#EDF6ED' }}>Style</th>
-                                <th style={{ width: 60, background: '#EDF6ED' }}>QTY</th>
-                                <th style={{ width: 80, background: '#EDF6ED' }}>UNIT COST</th>
-                                <th style={{ width: 90, background: '#EDF6ED' }}>BASE $</th>
-                                <th style={{ width: 90, background: '#EDF6ED' }}>TOTAL</th>
-                                {editCommReps.map(r => (
-                                  <th key={r.sales_rep_id} colSpan={editCalcMode === 'percent' ? 2 : 1} style={{ minWidth: editCalcMode === 'percent' ? 160 : 130, background: '#FFFFD4', fontSize: 11 }}>
-                                    {r.rep_name || '-'}<br/><span style={{ color: '#666' }}>{r.rep_code || ''}</span>
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {/* Totals row */}
-                              <tr className="fw-bold">
-                                <td colSpan="4" style={{ background: '#EDF6ED' }}></td>
-                                <td style={{ background: '#EDF6ED' }}>${editCommReps.reduce((s, r) => s + editGetRepTotal(r.sales_rep_id), 0).toFixed(2)}</td>
-                                {editCommReps.map(r => (
-                                  <td key={r.sales_rep_id} colSpan={editCalcMode === 'percent' ? 2 : 1} style={{ background: '#FFFFD4' }}>${editGetRepTotal(r.sales_rep_id).toFixed(2)}</td>
-                                ))}
-                              </tr>
-                              {/* Item rows */}
-                              {editCommItems.map((item, idx) => {
-                                const baseVal = parseFloat(editGrid[idx]?.[editCommReps[0]?.sales_rep_id]?.base || item.unit_cost || 0)
-                                const qty = item.qty || 0
-                                const itemNetValue = qty * baseVal
-                                const itemCommTotal = editCommReps.reduce((s, r) => s + (parseFloat(editGrid[idx]?.[r.sales_rep_id]?.commission) || 0), 0)
-                                return (
-                                  <tr key={idx}>
-                                    <td style={{ textAlign: 'left' }}>{item.item_name || '-'}{item.item_size_name ? ` Size ${item.item_size_name}` : ''}</td>
-                                    <td>{qty}</td>
-                                    <td>{editCalcMode === 'default' ? (item.unit_cost || 0).toFixed(2) : ''}</td>
-                                    <td>{editCalcMode === 'default' ? (
-                                      <input type="number" step="0.01" className="form-control form-control-sm text-center" style={{ width: 75, margin: '0 auto' }}
-                                        value={editGrid[idx]?.[editCommReps[0]?.sales_rep_id]?.base ?? item.unit_cost ?? ''}
-                                        onChange={e => editCommReps.forEach(r => editUpdateGridBase(idx, r.sales_rep_id, e.target.value))} />
-                                    ) : ''}</td>
-                                    <td>{editCalcMode === 'default' ? itemCommTotal.toFixed(2) : ''}</td>
-                                    {editCommReps.map(r => {
-                                      const cell = editGrid[idx]?.[r.sales_rep_id] || {}
-                                      const commVal = parseFloat(cell.commission) || 0
-                                      if (editCalcMode === 'percent') {
-                                        const pctVal = cell.percent || ''
-                                        const calcComm = itemNetValue * (parseFloat(pctVal) || 0) / 100
-                                        return (<React.Fragment key={r.sales_rep_id}>
-                                          <td style={{ background: '#FFFFD4' }}>
-                                            <input type="number" step="0.01" className="form-control form-control-sm text-center" style={{ width: 60, margin: '0 auto' }}
-                                              value={pctVal}
-                                              onChange={e => {
-                                                const pct = e.target.value
-                                                const calc = (itemNetValue * (parseFloat(pct) || 0) / 100).toFixed(2)
-                                                setEditGrid(prev => ({ ...prev, [idx]: { ...prev[idx], [r.sales_rep_id]: { ...prev[idx]?.[r.sales_rep_id], percent: pct, commission: calc } } }))
-                                              }} placeholder="%" />
-                                          </td>
-                                          <td style={{ background: '#FFFFD4' }}>
-                                            <input type="text" className="form-control form-control-sm text-center" style={{ width: 65, margin: '0 auto', background: '#f8f9fa' }} readOnly value={calcComm ? calcComm.toFixed(2) : '0'} />
-                                          </td>
-                                        </React.Fragment>)
-                                      } else if (editCalcMode === 'dollar') {
-                                        return (
-                                          <td key={r.sales_rep_id} style={{ background: '#FFFFD4' }}>
-                                            <input type="number" step="0.01" className="form-control form-control-sm text-center" style={{ width: 70, margin: '0 auto' }}
-                                              value={cell.commission || ''} onChange={e => editUpdateGridCell(idx, r.sales_rep_id, e.target.value)} placeholder="$" />
-                                          </td>
-                                        )
-                                      } else {
-                                        return (
-                                          <td key={r.sales_rep_id} style={{ background: '#FFFFD4' }}>
-                                            <div className="d-flex align-items-center gap-1 justify-content-center">
-                                              <input type="number" step="0.01" className="form-control form-control-sm text-center" style={{ width: 50 }}
-                                                value={cell.commission || ''} onChange={e => editUpdateGridCell(idx, r.sales_rep_id, e.target.value)} placeholder="0" />
-                                              <span style={{ fontSize: 10, color: '#666' }}>{(commVal * qty).toFixed(2)}</span>
-                                            </div>
-                                          </td>
-                                        )
-                                      }
-                                    })}
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
+                        <CommissionGrid
+                          mode={editCalcMode}
+                          onModeChange={editHandleModeChange}
+                          items={editCommItems}
+                          reps={editCommReps.map(r => ({ repId: r.sales_rep_id, repName: r.rep_name || `Rep #${r.sales_rep_id}`, repCode: r.rep_code || '' }))}
+                          grid={editGrid}
+                          onGridChange={(itemIdx, repId, patch) => setEditGrid(prev => ({ ...prev, [itemIdx]: { ...prev[itemIdx], [repId]: { ...(prev[itemIdx]?.[repId] || {}), ...patch } } }))}
+                          repTypes={editRepTypes}
+                          onRepTypeChange={editHandleRepTypeChange}
+                          poNetAmount={parseFloat(editCommData?.invoice?.net_amount || 0)}
+                          getRepTotal={editGetRepTotal}
+                          fmtMoney={fmtMoney}
+                        />
                       ) : (
-                        /* Simple rep rows when no items */
                         <div>
                           <h6 className="fw-semibold mb-2"><i className="bi bi-people me-2"></i>Sales Rep Commission</h6>
                           <table className="table table-sm table-bordered" style={{ fontSize: 13 }}>
@@ -1517,7 +1831,7 @@ export default function InvoiceList() {
                                 </tr>
                               ))}
                             </tbody>
-                            <tfoot><tr className="fw-bold"><td colSpan="2" className="text-end">Total:</td><td>${editCommReps.reduce((s, r) => s + (parseFloat(r.total_price) || 0), 0).toFixed(2)}</td></tr></tfoot>
+                            <tfoot><tr className="fw-bold"><td colSpan="2" className="text-end">Total:</td><td>{fmtMoney(editCommReps.reduce((s, r) => s + (parseFloat(r.total_price) || 0), 0))}</td></tr></tfoot>
                           </table>
                         </div>
                       )}

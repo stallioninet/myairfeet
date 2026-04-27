@@ -199,8 +199,12 @@ router.get('/', async (req, res) => {
     const filter = status ? { status } : {}
     const events = await col('events').find(filter).sort({ created_at: -1 }).toArray()
 
-    // Use event_id (numeric) for sub-collection lookups
-    const eventIds = events.map(e => e.event_id || e.legacy_id).filter(Boolean)
+    // Build lookup IDs: numeric (legacy) + _id string (app-created events)
+    const eventIds = [...new Set(events.flatMap(e => {
+      const n = e.event_id ?? e.legacy_id
+      const s = e._id.toString()
+      return n != null ? [n, String(n), s] : [s]
+    }).filter(Boolean))]
 
     // Resolve tax state names for location column
     const taxIds = [...new Set(events.map(e => e.salesTax_state_id).filter(Boolean))]
@@ -250,13 +254,16 @@ router.get('/', async (req, res) => {
     ]).toArray()
     const bonusMap = Object.fromEntries(bonuses.map(b => [b._id, b]))
 
-    // Attach computed fields to each event
+    // Attach computed fields to each event — check numeric and string _id variants
     const enriched = events.map(e => {
-      const eid = e.event_id || e.legacy_id || ''
-      const r = receiptMap[eid] || { totalCash: 0, totalCredit: 0, totalChecks: 0, days: 0 }
-      const c = costMap[eid] || { totalCost: 0, costEntries: 0 }
-      const it = itemMap[eid] || { itemCount: 0, totalQty: 0 }
-      const b = bonusMap[eid] || { totalCommission: 0, paidDate: null }
+      const numId = e.event_id ?? e.legacy_id
+      const strId = e._id.toString()
+      const eid   = numId ?? strId
+      // Check both numeric and string keys in maps (aggregation key matches stored event_id type)
+      const r = receiptMap[eid] || receiptMap[strId] || receiptMap[String(eid)] || { totalCash: 0, totalCredit: 0, totalChecks: 0, days: 0 }
+      const c = costMap[eid]    || costMap[strId]    || costMap[String(eid)]    || { totalCost: 0, costEntries: 0 }
+      const it = itemMap[eid]   || itemMap[strId]    || itemMap[String(eid)]    || { itemCount: 0, totalQty: 0 }
+      const b = bonusMap[eid]   || bonusMap[strId]   || bonusMap[String(eid)]   || { totalCommission: 0, paidDate: null }
       const totalRevenue = r.totalCash + r.totalCredit + r.totalChecks
       const profit = totalRevenue - c.totalCost - b.totalCommission
       return {
@@ -307,8 +314,13 @@ router.get('/:id', async (req, res) => {
     const event = await col('events').findOne({ _id: oid })
     if (!event) return res.status(404).json({ error: 'Event not found' })
 
-    const eid = event.event_id || event.legacy_id
-    const eidQuery = { $in: [eid, String(eid), parseInt(eid)] }
+    // Support both legacy numeric event_id and app-created events (keyed by _id string)
+    const numericId = event.event_id ?? event.legacy_id
+    const strId     = event._id.toString()
+    const eid       = numericId ?? strId
+    const eidQuery  = numericId != null
+      ? { $in: [numericId, String(numericId), strId] }
+      : { $in: [strId] }
 
     const [items, costs, receipts] = await Promise.all([
       col('event_items').find({ event_id: eidQuery }).toArray(),

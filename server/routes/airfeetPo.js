@@ -114,7 +114,8 @@ router.get('/:id', async (req, res) => {
   try {
     const po = await col().findOne({ _id: new mongoose.Types.ObjectId(req.params.id) })
     if (!po) return res.status(404).json({ error: 'PO not found' })
-    const items = await itemsCol().find({ po_id: po.legacy_id }).toArray()
+    // Items stored with airfeet_po_id; checks stored with po_id
+    const items = await itemsCol().find({ airfeet_po_id: po.legacy_id }).toArray()
     const checks = await checksCol().find({ po_id: po.legacy_id }).toArray()
     res.json({ ...po, items, checks })
   } catch (err) {
@@ -278,8 +279,8 @@ router.post('/:id/copy', async (req, res) => {
     const result = await col().insertOne(copy)
     copy._id = result.insertedId
 
-    // Copy items
-    const items = await itemsCol().find({ po_id: original.legacy_id }).toArray()
+    // Copy items — field is airfeet_po_id
+    const items = await itemsCol().find({ airfeet_po_id: original.legacy_id }).toArray()
     if (items.length) {
       const copiedItems = items.map(it => {
         const c = { ...it }
@@ -302,8 +303,8 @@ router.delete('/:id', async (req, res) => {
     const po = await col().findOne({ _id: new mongoose.Types.ObjectId(req.params.id) })
     if (!po) return res.status(404).json({ error: 'PO not found' })
 
-    // Delete related items and checks
-    await itemsCol().deleteMany({ po_id: po.legacy_id })
+    // Delete related items (stored with airfeet_po_id) and checks (stored with po_id)
+    await itemsCol().deleteMany({ airfeet_po_id: po.legacy_id })
     await checksCol().deleteMany({ po_id: po.legacy_id })
     await col().deleteOne({ _id: po._id })
 

@@ -623,7 +623,12 @@ router.post('/', async (req, res) => {
     const { company_name, customer_type, contact_name, phone, extension, email, customer_code,
       notes, terms, fob, ship, ship_via, project, status, relationship, address, city, state, zip, fax, website, sales_rep } = req.body
     if (!company_name) return res.status(400).json({ error: 'Company name is required' })
+    // Auto-assign legacy_id so sub-resources (addresses, contacts) work for app-created customers
+    const maxDoc = await col().find({}).sort({ legacy_id: -1 }).limit(1).toArray()
+    const nextLegacyId = ((maxDoc[0]?.legacy_id) || 0) + 1
+
     const doc = {
+      legacy_id: nextLegacyId,
       company_name: company_name.trim(),
       customer_type: (customer_type || '').trim(),
       relationship: (relationship || '').trim(),
