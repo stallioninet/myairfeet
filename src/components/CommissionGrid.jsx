@@ -28,6 +28,7 @@ export default function CommissionGrid({
   poNetAmount,    // number — full invoice amount (for PERCENT mode)
   getRepTotal,    // (repId) => number
   fmtMoney,       // (v) => string
+  hiddenModes = [],// modes to hide from the toolbar e.g. ['percent','dollar']
 }) {
   function itemTotal(idx) {
     const item = items[idx]
@@ -91,7 +92,7 @@ export default function CommissionGrid({
           { key: 'percent', label: 'Pay by % of Total', color: '#1abc9c' },
           { key: 'dollar',  label: 'Pay by $',          color: '#1abc9c' },
           { key: 'default', label: 'Default View',       color: '#333'   },
-        ].map(b => (
+        ].filter(b => !hiddenModes.includes(b.key)).map(b => (
           <button key={b.key} type="button" className="btn px-4"
             style={{ background: b.color, color: '#fff', opacity: mode === b.key ? 1 : 0.6, fontWeight: mode === b.key ? 700 : 400 }}
             onClick={() => onModeChange(b.key)}>

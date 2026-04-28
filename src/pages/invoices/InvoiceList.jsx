@@ -1737,6 +1737,7 @@ export default function InvoiceList() {
                           poNetAmount={parseFloat(addCommInv?.net_amount || 0)}
                           getRepTotal={addGetRepTotal}
                           fmtMoney={fmtMoney}
+                          hiddenModes={['percent', 'dollar']}
                         />
                       ) : addCommReps.length > 0 ? (
                         <table className="table table-sm table-bordered" style={{ fontSize: 13 }}>
@@ -1816,6 +1817,7 @@ export default function InvoiceList() {
                           poNetAmount={parseFloat(editCommData?.invoice?.net_amount || 0)}
                           getRepTotal={editGetRepTotal}
                           fmtMoney={fmtMoney}
+                          hiddenModes={['percent', 'dollar']}
                         />
                       ) : (
                         <div>
@@ -2068,6 +2070,13 @@ export default function InvoiceList() {
         const pRecAmt = parseFloat(payForm.received_amount) || 0
         const pPct = pNetAmt > 0 ? ((pRecAmt / pNetAmt) * 100).toFixed(2) : '0.00'
         const commId = commMap[viewCommInv.legacy_id]
+        const pCommRepDets = viewCommData.commRepDets || []
+        function getRepCommType(repId) {
+          if (pSaveStatus === 'percent') return 'percent'
+          if (pSaveStatus === 'dollar') return 'dollar'
+          const rd = pCommRepDets.find(d => String(d.sales_rep_id) === String(repId))
+          return rd?.rep_save_status === 'percent' ? 'percent' : 'dollar'
+        }
         return (<>
           <div className="modal-backdrop fade show" style={{ zIndex: 1070 }}></div>
           <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1075, overflowY: 'auto', height: '100vh' }}>
@@ -2185,11 +2194,33 @@ export default function InvoiceList() {
                     {/* Per-Rep Commission Amounts */}
                     {Object.entries(payRepAmounts).map(([repId, data]) => {
                       const det = pDetails.find(d => String(d.sales_rep_id) === repId)
+                      const commType = getRepCommType(repId)
+                      const isPercent = commType === 'percent'
+                      const pctVal = isPercent
+                        ? (pSaveStatus === 'percent'
+                            ? (pNetAmt > 0 ? ((data.org_amount / pNetAmt) * 100).toFixed(2) : '0.00')
+                            : (() => {
+                                const rds = pCommRepDets.filter(d => String(d.sales_rep_id) === String(repId))
+                                return rds.length > 0
+                                  ? (rds.reduce((s, d) => s + (parseFloat(d.commission_price_percentage) || 0), 0) / rds.length).toFixed(2)
+                                  : null
+                              })())
+                        : null
                       return (
                         <div className="row g-3 mb-3 align-items-center" key={repId}>
                           <div className="col-md-4 text-end">
-                            <div className="fw-semibold">{det?.rep_name || `Rep #${repId}`} ({det?.rep_code || ''})</div>
-                            <div style={{ fontSize: 12 }}><strong>(${data.org_amount.toFixed(2)})</strong></div>
+                            <div className="fw-semibold d-flex align-items-center justify-content-end gap-2">
+                              {det?.rep_name || `Rep #${repId}`} ({det?.rep_code || ''})
+                              <span className={`badge ${isPercent ? 'bg-success' : 'bg-primary'}`} style={{ fontSize: 10 }}>
+                                {isPercent ? '%' : '$'}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 12 }}>
+                              {isPercent && pctVal
+                                ? <strong>{pctVal}% = ${data.org_amount.toFixed(2)}</strong>
+                                : <strong>${data.org_amount.toFixed(2)}</strong>
+                              }
+                            </div>
                             <div style={{ fontSize: 11, fontStyle: 'italic', color: '#666' }}>Outstanding: <span style={{ color: data.balance > 0 ? '#dc2626' : '#198754' }}>${data.balance.toFixed(2)}</span></div>
                           </div>
                           <div className="col-md-4">

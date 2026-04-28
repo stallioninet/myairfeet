@@ -3,7 +3,13 @@
     "allow": [
       "Bash(curl -s \"http://localhost:5000/api/commissions\")",
       "Bash(node -e \"const c=require\\('C:/temp/comms.json'\\); console.log\\('total:',c.length\\); if\\(c.length>0\\)console.log\\('sample:',JSON.stringify\\(c[0]\\).substr\\(0,200\\)\\)\")",
-      "Bash(curl -s \"http://localhost:5000/api/sales-reps/55/customers\")"
+      "Bash(curl -s \"http://localhost:5000/api/sales-reps/55/customers\")",
+      "Bash(curl *)",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "Bash(pkill -f \"node server/index.js\")",
+      "Bash(node server/index.js)",
+      "Read(//e/xmapp/htdocs/523/application/views/frontend/commission/**)",
+      "Read(//e/xmapp/htdocs/523/application/views/frontend/worked/**)"
     ]
   }
 }
