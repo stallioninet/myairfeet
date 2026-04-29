@@ -29,6 +29,9 @@ export default function InvoiceList() {
   const [viewMode, setViewMode] = useState('invoice') // 'invoice' or 'packing'
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [emailForm, setEmailForm] = useState({ to: '', cc: '', bcc: '', subject: '', message: '' })
+  const [emailInvId, setEmailInvId] = useState(null)
+  const [emailInvNum, setEmailInvNum] = useState('')
+  const [emailPdfBase64, setEmailPdfBase64] = useState(null)
   const [emailSending, setEmailSending] = useState(false)
   const [trackInv, setTrackInv] = useState(null)
   const [trackForm, setTrackForm] = useState({ shipped_date: '', tracking_no: '' })
@@ -895,25 +898,32 @@ export default function InvoiceList() {
     setTimeout(() => win.print(), 400)
   }
 
+  function pdfOpts(filename) {
+    return {
+      margin: [8, 8, 8, 8],
+      filename,
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2, useCORS: true, allowTaint: true, logging: false, imageTimeout: 10000 },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    }
+  }
+
   function downloadInvoice() {
     const content = document.getElementById('invoice-capture')
     if (!content) return
-    html2pdf().set({
-      margin: [10, 10, 10, 10],
-      filename: `${viewMode === 'packing' ? 'PackingSlip' : 'Invoice'}_${viewInv?.invoice_number || 'download'}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-    }).from(content).save().then(() => toast.success('PDF downloaded'))
+    const filename = `${viewMode === 'packing' ? 'PackingSlip' : 'Invoice'}_${viewInv?.invoice_number || 'download'}.pdf`
+    html2pdf().set(pdfOpts(filename)).from(content).save().then(() => toast.success('PDF downloaded'))
   }
 
-  function openEmailModal() {
-    const invNum = viewInv?.invoice_number || ''
-    const custName = viewInv?.company_name || ''
-    // Pre-populate To with customer email and contact emails
-    const customerEmail = viewInv?.customer?.company_email_address || ''
-    const contactEmails = (viewInv?.contacts || []).map(c => c.contact_email).filter(e => e && e !== 'Null')
+  async function openEmailModal() {
+    if (!viewInv?._id) { toast.error('No invoice loaded'); return }
+    const invNum = viewInv.invoice_number || ''
+    const custName = viewInv.company_name || ''
+    const customerEmail = viewInv.customer?.company_email_address || ''
+    const contactEmails = (viewInv.contacts || []).map(c => c.contact_email).filter(e => e && e !== 'Null')
     const allEmails = [...new Set([customerEmail, ...contactEmails].filter(Boolean))]
+    setEmailInvId(viewInv._id)
+    setEmailInvNum(invNum)
     setEmailForm({
       to: allEmails.join(', '),
       cc: '',
@@ -921,33 +931,40 @@ export default function InvoiceList() {
       subject: `Invoice ${invNum} - ${custName}`,
       message: `Please find attached Invoice ${invNum}.\n\nThank you,\nAirfeet LLC`,
     })
+    // Generate PDF now while invoice is fully visible (before modal opens)
+    // Use blob → FileReader for reliable base64 encoding
+    let pdfBase64 = null
+    try {
+      const content = document.getElementById('invoice-capture')
+      if (content) {
+        const filename = `Invoice_${viewInv.invoice_number || 'download'}.pdf`
+        const blob = await html2pdf().set(pdfOpts(filename)).from(content).output('blob')
+        pdfBase64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onloadend = () => resolve(reader.result)
+          reader.onerror = reject
+          reader.readAsDataURL(blob)
+        })
+      }
+    } catch (e) { console.warn('PDF generation failed:', e) }
+    setEmailPdfBase64(pdfBase64)
     setShowEmailModal(true)
   }
 
   async function handleSendEmail(e) {
     e.preventDefault()
+    if (!emailInvId) { toast.error('Invoice reference lost — please close and reopen the email dialog'); return }
     if (!emailForm.to.trim()) { toast.error('Enter recipient email'); return }
     setEmailSending(true)
     try {
-      // Generate PDF from invoice-capture div
-      let pdfBase64 = null
-      const content = document.getElementById('invoice-capture')
-      if (content) {
-        pdfBase64 = await html2pdf().set({
-          margin: [10, 10, 10, 10],
-          image: { type: 'jpeg', quality: 0.95 },
-          html2canvas: { scale: 2, useCORS: true },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        }).from(content).outputPdf('datauristring')
-      }
-      await api.sendInvoiceEmail(viewInv._id, {
+      await api.sendInvoiceEmail(emailInvId, {
         to: emailForm.to,
         cc: emailForm.cc || undefined,
         bcc: emailForm.bcc || undefined,
         subject: emailForm.subject,
         message: emailForm.message,
-        pdfBase64,
-        filename: `Invoice_${viewInv?.invoice_number || 'download'}.pdf`,
+        pdfBase64: emailPdfBase64,
+        filename: `Invoice_${emailInvNum || 'download'}.pdf`,
       })
       toast.success('Email sent successfully')
       setShowEmailModal(false)
@@ -2673,10 +2690,10 @@ export default function InvoiceList() {
         </div>
       </>)}
 
-      {/* Email Modal */}
+      {/* Email Modal — z-index above SlidePanel (1070) */}
       {showEmailModal && (<>
-        <div className="modal-backdrop fade show" style={{ zIndex: 1060 }}></div>
-        <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1061 }}>
+        <div className="modal-backdrop fade show" style={{ zIndex: 1080 }}></div>
+        <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1085 }}>
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content border-0 shadow">
               <div className="modal-header text-white" style={{ background: '#8f3aa5' }}>

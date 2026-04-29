@@ -274,7 +274,6 @@ router.post('/:id/send-email', async (req, res) => {
     await transport.sendMail(mailOptions)
 
     // Save to email history
-    const custCol = () => mongoose.connection.db.collection('customers')
     const customer = inv.company_id ? await custCol().findOne({ legacy_id: inv.company_id }) : null
     await mongoose.connection.db.collection('send_email_history').insertOne({
       inv_num: inv.invoice_number || '',
