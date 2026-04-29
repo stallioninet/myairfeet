@@ -124,10 +124,21 @@ router.get('/stats', async (req, res) => {
 })
 
 // GET sales reps for commission form
+// Optional ?company_id=N — returns only reps assigned to that customer via cust_sales_rep_map
 router.get('/lookup/reps', async (req, res) => {
   try {
-    const reps = await repCol().find({ status: 'active' }).sort({ first_name: 1 }).project({ legacy_id: 1, first_name: 1, last_name: 1, user_cust_code: 1, commission_rate: 1 }).toArray()
-    res.json(reps)
+    const companyId = req.query.company_id ? parseInt(req.query.company_id) : null
+    if (companyId) {
+      const custRepMapCol = mongoose.connection.db.collection('cust_sales_rep_map')
+      const maps = await custRepMapCol.find({ company_id: companyId, status: { $in: [1, '1'] } }).toArray()
+      const repIds = [...new Set(maps.map(m => m.sales_rep_id).filter(Boolean))]
+      if (!repIds.length) { res.json([]); return }
+      const reps = await repCol().find({ legacy_id: { $in: repIds }, status: 'active' }).sort({ user_cust_code: 1 }).project({ legacy_id: 1, first_name: 1, last_name: 1, user_cust_code: 1, commission_rate: 1 }).toArray()
+      res.json(reps)
+    } else {
+      const reps = await repCol().find({ status: 'active' }).sort({ first_name: 1 }).project({ legacy_id: 1, first_name: 1, last_name: 1, user_cust_code: 1, commission_rate: 1 }).toArray()
+      res.json(reps)
+    }
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -385,6 +396,23 @@ router.get('/:id', async (req, res) => {
     ])
     const totalReceived = [...oldPayments, ...newPayments].reduce((s, p) => s + (parseFloat(p.received_amt) || 0), 0)
 
+    // Enrich each payment with its per-rep amounts from invoice_payment_reps.
+    // New payments: id_inv_payment = String(payment._id)
+    // Old migrated payments: id_inv_payment may equal String(payment.legacy_id)
+    function enrichWithRepPayments(paymentList) {
+      return paymentList.map(p => {
+        const payIdStr = String(p._id)
+        const legacyIdStr = p.legacy_id != null ? String(p.legacy_id) : null
+        const repPays = payments.filter(rp =>
+          String(rp.id_inv_payment) === payIdStr ||
+          (legacyIdStr && String(rp.id_inv_payment) === legacyIdStr)
+        )
+        return { ...p, rep_payments: repPays.map(rp => ({ rep_id: rp.rep_id, comm_paid_amount: rp.comm_paid_amount })) }
+      })
+    }
+
+    const mainPayments = enrichWithRepPayments([...oldPayments, ...newPayments])
+
     res.json({
       ...comm,
       invoice: { ...(inv || {}), total_received: totalReceived, balance_due: Math.max(0, (inv?.net_amount || 0) - totalReceived) },
@@ -392,7 +420,7 @@ router.get('/:id', async (req, res) => {
       company_name: customer?.company_name || '',
       details: detailsWithReps,
       payments,
-      mainPayments: [...oldPayments, ...newPayments],
+      mainPayments,
       items: items.map(it => ({ ...it, item_name: it.po_item_name || it.item_name || '', qty: it.item_qty || it.qty || 0, unit_cost: parseFloat(it.item_unit_cost || it.unit_cost) || 0, item_id: it.item_id || it.legacy_id })),
       reps: allReps,
       commItemDets,

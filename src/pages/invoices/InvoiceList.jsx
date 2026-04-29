@@ -53,6 +53,9 @@ export default function InvoiceList() {
   const [editRepTypes, setEditRepTypes] = useState({})
   const [editInitialGrid, setEditInitialGrid] = useState({})
   const [editInitialRepTypes, setEditInitialRepTypes] = useState({})
+  const [allCommReps, setAllCommReps] = useState([])
+  const [showAddRepPicker, setShowAddRepPicker] = useState(false)
+  const [addRepSelected, setAddRepSelected] = useState('')
   // Add Commission (create new) from invoice page
   const [addCommInv, setAddCommInv] = useState(null)
   const [addCommLoading, setAddCommLoading] = useState(false)
@@ -69,6 +72,8 @@ export default function InvoiceList() {
   const [paySaving, setPaySaving] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
   const [editInv, setEditInv] = useState(null)
+  const [sortCol, setSortCol] = useState('po_date')
+  const [sortDir, setSortDir] = useState('desc')
   const [customers, setCustomers] = useState([])
   const [filterPaid, setFilterPaid] = useState('') // '' | 'unpaid'
   const [topCustomers, setTopCustomers] = useState({ topByCount: [], topByOutstanding: [] })
@@ -158,8 +163,11 @@ export default function InvoiceList() {
     if (!commId) { toast.error('No commission found'); return }
     setEditCommLoading(true)
     setEditCommInv(inv)
+    setShowAddRepPicker(false)
+    setAddRepSelected('')
     try {
-      const data = await api.getCommission(commId)
+      const [data, allReps] = await Promise.all([api.getCommission(commId), api.getCommissionReps()])
+      setAllCommReps(allReps || [])
       setEditCommData(data)
       const savedMode = data.save_status || 'default'
       setEditCalcMode(savedMode)
@@ -215,6 +223,39 @@ export default function InvoiceList() {
       setEditRepTypes(loadedRepTypes)
     } catch (err) { toast.error('Failed to load: ' + err.message) }
     setEditCommLoading(false)
+  }
+
+  function handleRemoveRepFromEdit(repId) {
+    setEditCommReps(prev => prev.filter(r => r.sales_rep_id !== repId))
+    setEditGrid(prev => {
+      const next = {}
+      Object.keys(prev).forEach(idx => {
+        const { [repId]: _removed, ...rest } = prev[idx] || {}
+        next[idx] = rest
+      })
+      return next
+    })
+    setEditRepTypes(prev => { const next = { ...prev }; delete next[repId]; return next })
+  }
+
+  function handleAddRepToEdit(repId) {
+    if (!repId) return
+    const rep = allCommReps.find(r => String(r.legacy_id) === String(repId))
+    if (!rep) return
+    const newRepId = String(rep.legacy_id)
+    const newRep = { sales_rep_id: newRepId, total_price: '0', rep_name: `${rep.first_name || ''} ${rep.last_name || ''}`.trim(), rep_code: rep.user_cust_code || '' }
+    setEditCommReps(prev => [...prev, newRep])
+    setEditGrid(prev => {
+      const next = { ...prev }
+      editCommItems.forEach((_, idx) => {
+        const baseVal = prev[idx]?.[editCommReps[0]?.sales_rep_id]?.base || '0'
+        next[idx] = { ...(next[idx] || {}), [newRepId]: { base: baseVal, commission: '', percent: '' } }
+      })
+      return next
+    })
+    setEditRepTypes(prev => ({ ...prev, [newRepId]: 'dollar' }))
+    setShowAddRepPicker(false)
+    setAddRepSelected('')
   }
 
   // Grid helpers for edit commission
@@ -385,7 +426,7 @@ export default function InvoiceList() {
     setAddRepRows([])
     try {
       const [repsData, invData] = await Promise.all([
-        api.getCommissionReps(),
+        api.getCommissionReps(inv.company_id ? { company_id: inv.company_id } : {}),
         api.getInvoice(inv._id),
       ])
       const reps = repsData || []
@@ -834,18 +875,24 @@ export default function InvoiceList() {
     const content = document.getElementById('invoice-capture')
     if (!content) return
     const styles = `
-      body { font-family: Arial, sans-serif; font-size: 13px; color: #333; margin: 20px; }
-      table { width: 100%; border-collapse: collapse; }
-      table.table-bordered td, table.table-bordered th { border: 1px solid #dee2e6; padding: 6px 10px; }
-      .bg-light { background: #f8f9fa; } b { font-weight: bold; } p { margin: 0 0 8px; }
-      .text-center { text-align: center; } .text-right { text-align: right; }
-      @media print { .no-print { display: none !important; } }
+      * { box-sizing: border-box; }
+      body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 12px; color: #333; margin: 10px; background: #fff; }
+      table { border-collapse: collapse; }
+      td, th { vertical-align: top; }
+      u { text-decoration: underline; }
+      p { margin: 0; }
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      @media print {
+        @page { margin: 8mm; size: A4 portrait; }
+        body { margin: 0; }
+      }
     `
-    const win = window.open('', '_blank', 'width=800,height=900')
-    win.document.write(`<!DOCTYPE html><html><head><title>Invoice - ${viewInv?.invoice_number || ''}</title><style>${styles}</style></head><body>${content.innerHTML}</body></html>`)
+    const win = window.open('', '_blank', 'width=850,height=1100')
+    win.document.write(`<!DOCTYPE html><html><head><title>${viewMode === 'packing' ? 'Packing Slip' : 'Invoice'} - ${viewInv?.invoice_number || ''}</title><style>${styles}</style></head><body>${content.innerHTML}</body></html>`)
     win.document.close()
     win.focus()
-    setTimeout(() => win.print(), 300)
+    setTimeout(() => win.print(), 400)
   }
 
   function downloadInvoice() {
@@ -863,8 +910,12 @@ export default function InvoiceList() {
   function openEmailModal() {
     const invNum = viewInv?.invoice_number || ''
     const custName = viewInv?.company_name || ''
+    // Pre-populate To with customer email and contact emails
+    const customerEmail = viewInv?.customer?.company_email_address || ''
+    const contactEmails = (viewInv?.contacts || []).map(c => c.contact_email).filter(e => e && e !== 'Null')
+    const allEmails = [...new Set([customerEmail, ...contactEmails].filter(Boolean))]
     setEmailForm({
-      to: '',
+      to: allEmails.join(', '),
       cc: '',
       bcc: '',
       subject: `Invoice ${invNum} - ${custName}`,
@@ -878,7 +929,26 @@ export default function InvoiceList() {
     if (!emailForm.to.trim()) { toast.error('Enter recipient email'); return }
     setEmailSending(true)
     try {
-      // TODO: backend email endpoint for invoices
+      // Generate PDF from invoice-capture div
+      let pdfBase64 = null
+      const content = document.getElementById('invoice-capture')
+      if (content) {
+        pdfBase64 = await html2pdf().set({
+          margin: [10, 10, 10, 10],
+          image: { type: 'jpeg', quality: 0.95 },
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        }).from(content).outputPdf('datauristring')
+      }
+      await api.sendInvoiceEmail(viewInv._id, {
+        to: emailForm.to,
+        cc: emailForm.cc || undefined,
+        bcc: emailForm.bcc || undefined,
+        subject: emailForm.subject,
+        message: emailForm.message,
+        pdfBase64,
+        filename: `Invoice_${viewInv?.invoice_number || 'download'}.pdf`,
+      })
       toast.success('Email sent successfully')
       setShowEmailModal(false)
     } catch (err) { toast.error(err.message) }
@@ -904,7 +974,29 @@ export default function InvoiceList() {
       p.invoice_number?.toLowerCase().includes(s) ||
       p.project?.toLowerCase().includes(s)
   })
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage)
+
+  const sortedFiltered = [...filtered].sort((a, b) => {
+    const dateFields = ['po_date', 'invoice_date', 'due_date', 'paid_date']
+    const numFields  = ['total_qty', 'net_amount']
+    let av = a[sortCol], bv = b[sortCol]
+    let cmp = 0
+    if (dateFields.includes(sortCol)) {
+      cmp = (av ? new Date(av).getTime() : 0) - (bv ? new Date(bv).getTime() : 0)
+    } else if (numFields.includes(sortCol)) {
+      cmp = (parseFloat(av) || 0) - (parseFloat(bv) || 0)
+    } else {
+      cmp = String(av ?? '').toLowerCase().localeCompare(String(bv ?? '').toLowerCase())
+    }
+    return sortDir === 'asc' ? cmp : -cmp
+  })
+
+  function handleSort(col) {
+    if (sortCol === col) { setSortDir(d => d === 'asc' ? 'desc' : 'asc') }
+    else { setSortCol(col); setSortDir('asc') }
+    setPage(1)
+  }
+
+  const paginated = sortedFiltered.slice((page - 1) * perPage, page * perPage)
 
   const headerStats = [
     { 
@@ -1036,17 +1128,34 @@ export default function InvoiceList() {
           <table className="table table-hover align-middle mb-0" style={{ fontSize: 13, minWidth: 1200 }}>
             <thead className="bg-light">
               <tr>
-                <th className="ps-3" style={{ minWidth: 140 }}>Customer</th>
-                <th style={{ minWidth: 85 }}>PO Date</th>
-                <th style={{ minWidth: 80 }}>PO #</th>
-                <th style={{ minWidth: 80 }}>Invoice #</th>
-                <th style={{ minWidth: 90 }}>Payment Due</th>
-                <th style={{ minWidth: 55 }}>PAID</th>
-                <th className="text-center" style={{ minWidth: 40 }}>QTY</th>
-                <th style={{ minWidth: 80 }}>Inv Total</th>
+                {[
+                  { label: 'Customer',    col: 'company_name', cls: 'ps-3', w: 140 },
+                  { label: 'PO Date',     col: 'po_date',      w: 85 },
+                  { label: 'PO #',        col: 'po_number',    w: 80 },
+                  { label: 'Invoice #',   col: 'invoice_number', w: 80 },
+                  { label: 'Payment Due', col: 'due_date',     w: 90 },
+                  { label: 'PAID',        col: 'paid_value',   w: 55 },
+                  { label: 'QTY',         col: 'total_qty',    w: 40, center: true },
+                  { label: 'Inv Total',   col: 'net_amount',   w: 80 },
+                ].map(({ label, col, cls = '', w, center }) => (
+                  <th key={col} className={cls + (center ? ' text-center' : '')}
+                    style={{ minWidth: w, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+                    onClick={() => handleSort(col)}>
+                    {label}
+                    <span className="ms-1" style={{ fontSize: 10, opacity: sortCol === col ? 1 : 0.35 }}>
+                      {sortCol === col ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
+                    </span>
+                  </th>
+                ))}
                 <th className="text-center" style={{ minWidth: 70 }}>ComAction</th>
                 <th className="text-center" style={{ minWidth: 170 }}>InvAction</th>
-                <th style={{ minWidth: 100 }}>Status</th>
+                <th style={{ minWidth: 100, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+                  onClick={() => handleSort('inv_status')}>
+                  Status
+                  <span className="ms-1" style={{ fontSize: 10, opacity: sortCol === 'inv_status' ? 1 : 0.35 }}>
+                    {sortCol === 'inv_status' ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -1080,22 +1189,28 @@ export default function InvoiceList() {
                   </td>
                   <td className="text-center">{inv.total_qty || 0}</td>
                   <td className="fw-semibold">{fmtMoney(inv.net_amount)}</td>
-                  {/* ComAction - condition based like old PHP */}
+                  {/* ComAction — mirrors old PHP permission gates:
+                       admin: Add (no comm) | Edit + View (has comm)
+                       sales_rep: View only (if comm exists) */}
                   <td className="text-center">
                     {commMap[inv.legacy_id] ? (<>
-                      <button className="btn btn-sm me-1" title="Edit Commission" style={{ padding: '2px 6px', background: '#e74c3c', color: '#fff', border: '1px solid #e74c3c' }}
-                        onClick={() => openEditComm(inv)}>
-                        <i className="bi bi-pencil"></i>
-                      </button>
+                      {!isSalesRep && (
+                        <button className="btn btn-sm me-1" title="Edit Commission" style={{ padding: '2px 6px', background: '#e74c3c', color: '#fff', border: '1px solid #e74c3c' }}
+                          onClick={() => openEditComm(inv)}>
+                          <i className="bi bi-pencil"></i>
+                        </button>
+                      )}
                       <button className="btn btn-sm" title="View Commission" style={{ padding: '2px 6px', background: '#95a5a6', color: '#fff', border: '1px solid #95a5a6' }}
                         onClick={() => openViewComm(inv)}>
                         <i className="bi bi-eye"></i>
                       </button>
                     </>) : (
-                      <button className="btn btn-sm" title="Add Commission" style={{ padding: '2px 6px', background: '#4CB755', color: '#fff', border: '1px solid #4CB755' }}
-                        onClick={() => openAddComm(inv)}>
-                        <i className="bi bi-plus"></i>
-                      </button>
+                      !isSalesRep && (
+                        <button className="btn btn-sm" title="Add Commission" style={{ padding: '2px 6px', background: '#4CB755', color: '#fff', border: '1px solid #4CB755' }}
+                          onClick={() => openAddComm(inv)}>
+                          <i className="bi bi-plus"></i>
+                        </button>
+                      )
                     )}
                   </td>
                   {/* InvAction - matching old PHP with conditions */}
@@ -1556,122 +1671,244 @@ export default function InvoiceList() {
               </button>
             </div>
 
-            <div id="invoice-capture" className="bg-white p-4 border rounded shadow-sm" style={{ minWidth: 700, fontSize: 13 }}>
-               {/* Invoice Header */}
-               <div className="d-flex justify-content-between mb-4 border-bottom pb-4">
-                  <div>
-                    <img src="https://staging.stallioni.com/assets/images/logo_fleet.png" alt="Airfeet" style={{ width: 140, marginBottom: 8 }} crossOrigin="anonymous" />
-                    <div className="fw-bold fs-5">Airfeet LLC</div>
-                    <div className="text-muted">2346 S. Lynhurst Dr, Suite 701<br/>Indianapolis, IN 46241</div>
-                  </div>
-                  <div className="text-end">
-                    <div className={`p-3 rounded-3 text-white fw-bold mb-3 ${viewMode === 'packing' ? 'bg-info' : 'bg-primary'}`} style={{ minWidth: 200, fontSize: 20 }}>
-                      {viewMode === 'packing' ? 'PACKING SLIP' : (viewInv.inv_quote_status === 1 ? 'QUOTE' : 'INVOICE')}
-                    </div>
-                    <div className="small text-muted">Date: <span className="text-dark fw-bold">{fmtDate(viewInv.invoice_date)}</span></div>
-                    <div className="small text-muted">Number: <span className="text-dark fw-bold">{viewInv.inv_quote_status === 1 ? 'Q-' : ''}{viewInv.invoice_number}</span></div>
-                    <div className="small text-muted">PO #: <span className="text-dark fw-bold">{viewInv.po_number || 'N/A'}</span></div>
-                  </div>
-               </div>
+            {/* Invoice capture — inline styles only so print/PDF renders correctly */}
+            {(() => {
+              const isQuote = viewInv.inv_quote_status === 1 || viewInv.inv_quote_status === '1'
+              const isPacking = viewMode === 'packing'
+              const label = isPacking ? 'Packing Slip' : (isQuote ? 'Quote' : 'Invoice')
+              const invNum = isQuote ? `Q-${viewInv.invoice_number}` : (viewInv.invoice_number || '')
+              const isPaid = viewInv.paid_value && viewInv.paid_value !== 'Un paid' && String(viewInv.paid_value).trim() !== ''
+              const isArchived = viewInv.po_status === 2 || viewInv.po_status === '2'
+              const border = '2px solid #949494'
+              const thS = { border, padding: '5px 7px', background: '#e6e6e6', fontWeight: 'bold', textAlign: 'center', fontSize: 11, WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }
+              const tdS = { border, padding: '4px 7px', textAlign: 'center', fontSize: 11 }
+              // Filter out 'Null' string (legacy migrated data)
+              const nv = v => (!v || v === 'Null' || v === 'null') ? '' : v
 
-               {/* Addresses */}
-               <div className="row g-4 mb-4">
-                  <div className="col-6">
-                    <div className="bg-light p-2 px-3 rounded-t fw-bold border-bottom small text-uppercase">Bill To</div>
-                    <div className="p-3 border rounded-b bg-white border-top-0">
-                      <div className="fw-bold mb-1">{viewInv.company_name}</div>
-                      <div className="text-muted small">{formatAddress(viewInv.billingAddr)}</div>
-                    </div>
-                  </div>
-                  <div className="col-6">
-                    <div className="bg-light p-2 px-3 rounded-t fw-bold border-bottom small text-uppercase">Ship To</div>
-                    <div className="p-3 border rounded-b bg-white border-top-0">
-                      <div className="fw-bold mb-1">{viewInv.company_name}</div>
-                      <div className="text-muted small">{formatAddress(viewInv.shippingAddr)}</div>
-                    </div>
-                  </div>
-               </div>
+              // CC emails from contacts and company email
+              const ccEmails = [
+                nv(viewInv.customer?.company_email_address),
+                ...(viewInv.contacts || []).map(c => nv(c.contact_email)).filter(Boolean),
+              ].filter((v, i, a) => v && a.indexOf(v) === i)
 
-               {/* Order Info */}
-               <div className="table-responsive mb-4">
-                 <table className="table table-sm table-bordered mb-0 small">
-                   <thead className="bg-light">
-                     <tr>
-                       <th className="text-center">Terms</th>
-                       <th className="text-center">Rep</th>
-                       <th className="text-center">Ship</th>
-                       <th className="text-center">Via</th>
-                       <th className="text-center">F.O.B.</th>
-                     </tr>
-                   </thead>
-                   <tbody className="text-center">
-                     <tr>
-                       <td>{viewInv.cust_terms || '-'}</td>
-                       <td>{viewInv.rep_info || '-'}</td>
-                       <td>{viewInv.cust_ship || '-'}</td>
-                       <td>{viewInv.cust_ship_via || '-'}</td>
-                       <td>{viewInv.customer_FOB || '-'}</td>
-                     </tr>
-                   </tbody>
-                 </table>
-               </div>
+              // Address helper
+              const addrLines = (name, addr) => {
+                const parts = [nv(name), nv(addr?.street_address), nv(addr?.street_address2), [nv(addr?.city), nv(addr?.state), nv(addr?.zip_code)].filter(Boolean).join(', ')].filter(Boolean)
+                return parts.map((l, i) => <span key={i}>{l}{i < parts.length - 1 && <br/>}</span>)
+              }
 
-               {/* Items Table */}
-               <table className="table table-hover border small mb-4">
-                 <thead className="bg-light">
-                   <tr>
-                     <th style={{ width: 50 }} className="text-center">Line</th>
-                     <th>Item Code</th>
-                     <th>Description</th>
-                     <th className="text-center">Shipped</th>
-                     <th className="text-end">Price</th>
-                     <th className="text-end">Amount</th>
-                   </tr>
-                 </thead>
-                 <tbody>
-                   {viewInv.items?.filter(it => it.inv_item_name || it.item_name).map((item, i) => {
-                     const qty = item.size_qty || item.qty || 0
-                     const cost = parseFloat(item.item_unit_cost || item.unit_cost) || 0
-                     const amt = qty * cost
-                     return (
-                       <tr key={i}>
-                         <td className="text-center">{i+1}</td>
-                         <td className="fw-medium">{item.item_sku}</td>
-                         <td>{item.inv_item_name || item.item_name}</td>
-                         <td className="text-center">{qty}</td>
-                         <td className="text-end">{viewMode === 'packing' ? '-' : `$${cost.toFixed(2)}`}</td>
-                         <td className="text-end fw-bold">{viewMode === 'packing' ? '-' : `$${amt.toFixed(2)}`}</td>
-                       </tr>
-                     )
-                   })}
-                 </tbody>
-                 {viewMode !== 'packing' && (
-                   <tfoot className="border-top-2">
-                     <tr className="bg-light">
-                       <td colSpan="5" className="text-end fw-bold">TOTAL</td>
-                       <td className="text-end fw-bold text-primary fs-6">${(viewInv.items?.reduce((s, it) => s + ((it.size_qty || it.qty || 0) * (parseFloat(it.item_unit_cost || it.unit_cost) || 0)), 0) || 0).toFixed(2)}</td>
-                     </tr>
-                   </tfoot>
-                 )}
-               </table>
+              // Build item rows
+              const itemRows = []
+              let lineNum = 0
+              let subtotal = 0
+              ;(viewInv.items || []).forEach(item => {
+                const itemName = item.po_item_name || item.inv_item_name || item.item_name || ''
+                if (!itemName) return
+                const itemSize = item.item_size_name || ''
+                if (!itemSize || itemSize === 'Null') return
+                const itemQty = parseFloat(item.size_qty || item.qty) || 0
+                if (itemQty === 0) return
+                const unitPrice = parseFloat(item.item_unit_cost || item.unit_cost) || 0
+                const isBo = item.bo_option === 'yes'
+                const bqty = isBo ? itemQty : 0
+                const sqty = isBo ? 0 : itemQty
+                const itemAmt = isBo ? 0 : itemQty * unitPrice
+                const itemDesc = itemSize !== 'Qty' ? `${itemName} ${itemSize.toUpperCase()}` : itemName
+                subtotal += itemAmt
+                const bg = lineNum % 2 === 0 ? '#EBEBEB' : '#FFF'
+                lineNum++
+                itemRows.push({ lineNum, itemCode: item.item_sku || '-', itemDesc, ordered: bqty + sqty, bqty, sqty, unitPrice, itemAmt, bg })
+              })
 
-               <div className="row">
-                 <div className="col-6">
-                   {viewInv.po_notes && (
-                     <div className="mt-3">
-                       <div className="fw-bold small text-muted text-uppercase mb-1">Notes</div>
-                       <div className="p-3 bg-light rounded small border">{viewInv.po_notes}</div>
-                     </div>
-                   )}
-                 </div>
-                 <div className="col-6 text-end">
-                    <div className="mt-4 pt-4 border-top">
-                      <p className="mb-0 text-muted small">Phone: 317-965-5212</p>
-                      <p className="mb-0 text-muted small">Email: info@myairfeet.com</p>
+              const shippingCosts = parseFloat(viewInv.shipping_costs) || 0
+              const hasCCCharge = (viewInv.charge_ccard || viewInv.cc_charge) && String(viewInv.charge_ccard || viewInv.cc_charge) !== '0' && (viewInv.charge_ccard || viewInv.cc_charge) !== ''
+              const ccAmt = parseFloat(viewInv.cc_amt) || 0
+              const ccPer = viewInv.cc_per ? `${viewInv.cc_per} %` : ''
+              let shippingLineNum = 0, ccLineNum = 0
+              if (shippingCosts > 0) { shippingLineNum = lineNum; lineNum++ }
+              if (hasCCCharge) { ccLineNum = lineNum; lineNum++ }
+              const shippingBg = shippingLineNum % 2 === 0 ? '#EBEBEB' : '#FFF'
+              const ccBg = ccLineNum % 2 === 0 ? '#EBEBEB' : '#FFF'
+              const displayTotal = subtotal + (shippingCosts > 0 ? shippingCosts : 0) + (hasCCCharge ? ccAmt : 0)
+              const hasSalesTax = viewInv.sales_tax_type === 'Y'
+              const salesTaxAmt = parseFloat(viewInv.sales_tax_amount) || 0
+              const grandTotal = hasSalesTax ? displayTotal + salesTaxAmt : displayTotal
+              const colCount = isPacking ? 6 : 8
+
+              return (
+                <div id="invoice-capture" style={{ fontFamily: '"Helvetica Neue",Helvetica,Arial,sans-serif', fontSize: 12, color: '#333', background: '#fff', padding: 15, position: 'relative', minWidth: 680 }}>
+
+                  {/* PAID watermark */}
+                  {isPaid && (
+                    <div style={{ position: 'absolute', top: '40%', left: 0, right: 0, textAlign: 'center', fontSize: 110, transform: 'rotate(-30deg)', color: 'rgba(255,0,0,0.38)', zIndex: 10, pointerEvents: 'none', userSelect: 'none', lineHeight: 1 }}>
+                      <div style={{ marginBottom: -40 }}>{viewInv.paid_value}</div>
+                      <div style={{ fontSize: 24 }}>{viewInv.paid_date ? fmtDate(viewInv.paid_date) : ''}</div>
                     </div>
-                 </div>
-               </div>
-            </div>
+                  )}
+                  {isArchived && (
+                    <div style={{ position: 'absolute', top: '40%', left: 0, right: 0, textAlign: 'center', fontSize: 110, transform: 'rotate(-30deg)', color: 'rgba(255,0,0,0.38)', zIndex: 10, pointerEvents: 'none', userSelect: 'none' }}>
+                      Archived
+                    </div>
+                  )}
+
+                  {/* ── HEADER: Logo | Address | Contact | Invoice table ── */}
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
+                    <tbody><tr>
+                      <td style={{ width: '25%', verticalAlign: 'top', paddingRight: 8 }}>
+                        <img src="/logo_insole.png" alt="Airfeet" style={{ width: '75%' }} />
+                        <div style={{ clear: 'both' }}/>
+                        <span style={{ fontSize: 11, fontStyle: 'italic', fontWeight: 'bold' }}>"It's like walking on air"</span>
+                      </td>
+                      <td style={{ width: '25%', verticalAlign: 'top', fontSize: 13 }}>
+                        <div style={{ fontSize: 17, fontWeight: 'bold' }}>Airfeet LLC</div>
+                        <div>2346 S. Lynhurst Dr, Suite 701</div>
+                        <div>Indianapolis, IN 46241</div>
+                      </td>
+                      <td style={{ width: '25%', verticalAlign: 'top', fontSize: 13 }}>
+                        <div>317-965-5212</div>
+                        <div><u>info@myairfeet.com</u></div>
+                        <div><u>www.myairfeet.com</u></div>
+                      </td>
+                      <td style={{ width: '25%', verticalAlign: 'top' }}>
+                        <p style={{ fontSize: 17, fontWeight: 'bold', textAlign: 'right', margin: '0 0 3px' }}>{label}</p>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead><tr>
+                            <th style={thS}>Date</th>
+                            <th style={thS}>{isPacking ? 'Invoice' : label}#</th>
+                          </tr></thead>
+                          <tbody>
+                            <tr>
+                              <td style={tdS}>{fmtDate(viewInv.invoice_date)}</td>
+                              <td style={tdS}>{invNum}</td>
+                            </tr>
+                            <tr>
+                              <td style={tdS}>Po #</td>
+                              <td style={tdS}>{viewInv.po_number || ''}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr></tbody>
+                  </table>
+
+                  {/* ── BILL TO / SHIP TO ── */}
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
+                    <tbody><tr>
+                      <td style={{ width: '48%', verticalAlign: 'top', paddingRight: 8 }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead><tr><th style={{ ...thS, textAlign: 'left' }}>Bill To</th></tr></thead>
+                          <tbody><tr><td style={{ border, padding: 8, fontSize: 12, verticalAlign: 'top', minHeight: 80 }}>
+                            {addrLines(viewInv.company_name, viewInv.billingAddr)}
+                            {ccEmails.length > 0 && (
+                              <span style={{ display: 'block', marginTop: 4, fontSize: 10 }}>
+                                CC Emails : {ccEmails.join(', ')}
+                              </span>
+                            )}
+                          </td></tr></tbody>
+                        </table>
+                      </td>
+                      <td style={{ width: '4%' }}></td>
+                      <td style={{ width: '48%', verticalAlign: 'top' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead><tr><th style={{ ...thS, textAlign: 'left' }}>Ship To</th></tr></thead>
+                          <tbody><tr><td style={{ border, padding: 8, fontSize: 12, verticalAlign: 'top', minHeight: 80 }}>
+                            {addrLines(viewInv.company_name, viewInv.shippingAddr)}
+                          </td></tr></tbody>
+                        </table>
+                      </td>
+                    </tr></tbody>
+                  </table>
+
+                  {/* ── ORDER INFO ── */}
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
+                    <thead><tr>
+                      {['Terms','Rep','Ship','ShipAcct #','Via','F.O.B.','Project'].map(h => <th key={h} style={thS}>{h}</th>)}
+                    </tr></thead>
+                    <tbody><tr>
+                      {[viewInv.cust_terms, viewInv.rep_info, viewInv.cust_ship, viewInv.shippingAddr?.shipping_acnt, viewInv.cust_ship_via, viewInv.customer_FOB, viewInv.cust_project].map((v, i) => (
+                        <td key={i} style={tdS}>{nv(v)}</td>
+                      ))}
+                    </tr></tbody>
+                  </table>
+
+                  {/* ── ITEMS TABLE ── */}
+                  <table style={{ width: '100%', borderCollapse: 'collapse', minHeight: 200 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ ...thS, width: 32 }}>Line</th>
+                        <th style={{ ...thS, width: '11%' }}>Item Code</th>
+                        <th style={{ ...thS, textAlign: 'left' }}>Description</th>
+                        <th style={{ ...thS, width: 58 }}>Ordered</th>
+                        <th style={{ ...thS, width: 80 }}>Back Order<br/>Quantity</th>
+                        <th style={{ ...thS, width: 70 }}>Shipped<br/>Quantity</th>
+                        {!isPacking && <th style={{ ...thS, width: 68 }}>Price Each ($)</th>}
+                        {!isPacking && <th style={{ ...thS, width: 80 }}>Amount in ($)</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itemRows.map((row, i) => (
+                        <tr key={i}>
+                          <td style={{ ...tdS, backgroundColor: row.bg }}>{row.lineNum}</td>
+                          <td style={{ ...tdS, backgroundColor: row.bg }}>{row.itemCode}</td>
+                          <td style={{ ...tdS, textAlign: 'left', backgroundColor: row.bg }}>{row.itemDesc}</td>
+                          <td style={{ ...tdS, backgroundColor: row.bg }}>{row.ordered}</td>
+                          <td style={{ ...tdS, backgroundColor: row.bg }}>{row.bqty || ''}</td>
+                          <td style={{ ...tdS, backgroundColor: row.bg }}>{row.sqty || ''}</td>
+                          {!isPacking && <td style={{ ...tdS, textAlign: 'right', backgroundColor: row.bg }}>{row.unitPrice.toFixed(2)}</td>}
+                          {!isPacking && <td style={{ ...tdS, textAlign: 'right', backgroundColor: row.bg }}>{row.itemAmt.toFixed(2)}</td>}
+                        </tr>
+                      ))}
+                      {shippingCosts > 0 && (
+                        <tr>
+                          <td style={{ ...tdS, backgroundColor: shippingBg }}>{shippingLineNum + 1}</td>
+                          <td style={{ ...tdS, backgroundColor: shippingBg }}>Shipping</td>
+                          <td style={{ ...tdS, textAlign: 'left', backgroundColor: shippingBg }}>Shipping Costs</td>
+                          <td style={{ ...tdS, backgroundColor: shippingBg, textAlign: 'center' }} colSpan={isPacking ? 3 : 3}>1</td>
+                          {!isPacking && <td style={{ ...tdS, textAlign: 'right', backgroundColor: shippingBg }}>{shippingCosts.toFixed(2)}</td>}
+                          {!isPacking && <td style={{ ...tdS, textAlign: 'right', backgroundColor: shippingBg }}>{shippingCosts.toFixed(2)}</td>}
+                        </tr>
+                      )}
+                      {hasCCCharge && (
+                        <tr>
+                          <td style={{ ...tdS, backgroundColor: ccBg }}>{ccLineNum + 1}</td>
+                          <td style={{ ...tdS, backgroundColor: ccBg }}>CC Charge</td>
+                          <td style={{ ...tdS, textAlign: 'left', backgroundColor: ccBg }}>CC %</td>
+                          <td style={{ ...tdS, backgroundColor: ccBg, textAlign: 'center' }} colSpan={isPacking ? 3 : 3}>{ccPer}</td>
+                          {!isPacking && <td style={{ ...tdS, textAlign: 'right', backgroundColor: ccBg }}>{ccAmt.toFixed(2)}</td>}
+                          {!isPacking && <td style={{ ...tdS, textAlign: 'right', backgroundColor: ccBg }}>{ccAmt.toFixed(2)}</td>}
+                        </tr>
+                      )}
+                    </tbody>
+                    <tfoot>
+                      {nv(viewInv.po_notes) && (
+                        <tr><td colSpan={colCount} style={{ ...tdS, textAlign: 'left', padding: '6px 8px' }}>
+                          <strong>NOTES:</strong><br/>{viewInv.po_notes}
+                        </td></tr>
+                      )}
+                      {nv(viewInv.shipinfo_notes) && (
+                        <tr><td colSpan={colCount} style={{ ...tdS, textAlign: 'left', padding: '6px 8px' }}>
+                          <strong>Shipping Info Note:</strong><br/>{viewInv.shipinfo_notes}
+                        </td></tr>
+                      )}
+                      {hasSalesTax && (
+                        <tr>
+                          <td colSpan={colCount - (isPacking ? 1 : 2)} style={{ ...tdS, textAlign: 'center', fontWeight: 'bold', padding: 12 }}>Sales Tax</td>
+                          {!isPacking && <td style={{ ...tdS, textAlign: 'right', fontWeight: 'bold', padding: 12 }}>${salesTaxAmt.toFixed(2)}</td>}
+                          {!isPacking && <td style={{ border }}></td>}
+                        </tr>
+                      )}
+                      {!isPacking && (
+                        <tr>
+                          <td colSpan={colCount - 2} style={{ ...tdS, textAlign: 'right', fontWeight: 'bold', padding: 12 }}>{nv(viewInv.credit_card_notes)}</td>
+                          <td style={{ ...tdS, textAlign: 'center', fontWeight: 'bold', padding: 12 }}>Total</td>
+                          <td style={{ ...tdS, textAlign: 'right', fontWeight: 'bold', padding: 12 }}>${grandTotal.toFixed(2)}</td>
+                        </tr>
+                      )}
+                    </tfoot>
+                  </table>
+                </div>
+              )
+            })()}
 
             {/* Panel Actions */}
             <div className="d-flex justify-content-end gap-2 mt-4">
@@ -1780,7 +2017,7 @@ export default function InvoiceList() {
             <div className="modal-content border-0 shadow">
               <div className="modal-header text-white" style={{ background: 'linear-gradient(135deg, #e74c3c, #c0392b)' }}>
                 <h5 className="modal-title fw-bold"><i className="bi bi-pencil me-2"></i>Commission Details</h5>
-                <button type="button" className="btn-close btn-close-white" onClick={() => { setEditCommInv(null); setEditCommData(null) }}></button>
+                <button type="button" className="btn-close btn-close-white" onClick={() => { setEditCommInv(null); setEditCommData(null); setShowAddRepPicker(false); setAddRepSelected('') }}></button>
               </div>
               <div className="modal-body">
                 {editCommLoading ? (
@@ -1818,18 +2055,20 @@ export default function InvoiceList() {
                           getRepTotal={editGetRepTotal}
                           fmtMoney={fmtMoney}
                           hiddenModes={['percent', 'dollar']}
+                          onRemoveRep={handleRemoveRepFromEdit}
                         />
                       ) : (
                         <div>
                           <h6 className="fw-semibold mb-2"><i className="bi bi-people me-2"></i>Sales Rep Commission</h6>
                           <table className="table table-sm table-bordered" style={{ fontSize: 13 }}>
-                            <thead className="bg-light"><tr><th>Sales Rep</th><th>Code</th><th style={{ width: 200 }}>Commission ($)</th></tr></thead>
+                            <thead className="bg-light"><tr><th>Sales Rep</th><th>Code</th><th style={{ width: 200 }}>Commission ($)</th><th style={{ width: 40 }}></th></tr></thead>
                             <tbody>
                               {editCommReps.map((r, i) => (
                                 <tr key={i}>
                                   <td className="fw-semibold">{r.rep_name || `Rep #${r.sales_rep_id}`}</td>
                                   <td><span className="badge bg-primary-subtle text-primary">{r.rep_code || '-'}</span></td>
                                   <td><input type="number" step="0.01" className="form-control form-control-sm" value={r.total_price} onChange={e => setEditCommReps(prev => prev.map((rr, j) => j === i ? { ...rr, total_price: e.target.value } : rr))} placeholder="0.00" /></td>
+                                  <td><button type="button" className="btn btn-sm btn-outline-danger py-0 px-1" onClick={() => handleRemoveRepFromEdit(r.sales_rep_id)} title="Remove rep">✕</button></td>
                                 </tr>
                               ))}
                             </tbody>
@@ -1837,13 +2076,39 @@ export default function InvoiceList() {
                           </table>
                         </div>
                       )}
+
+                      {/* Add Rep section */}
+                      <div className="d-flex align-items-center gap-2 mt-3 pt-2 border-top">
+                        {!showAddRepPicker ? (
+                          <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => setShowAddRepPicker(true)}>
+                            <i className="bi bi-person-plus me-1"></i>Add Rep
+                          </button>
+                        ) : (
+                          <>
+                            <select className="form-select form-select-sm" style={{ width: 260, maxWidth: '100%' }}
+                              value={addRepSelected}
+                              onChange={e => setAddRepSelected(e.target.value)}>
+                              <option value="">-- Select Rep --</option>
+                              {allCommReps
+                                .filter(r => !editCommReps.some(er => String(er.sales_rep_id) === String(r.legacy_id)))
+                                .map(r => (
+                                  <option key={r.legacy_id} value={r.legacy_id}>
+                                    {`${r.first_name || ''} ${r.last_name || ''}`.trim()} ({r.user_cust_code || '-'})
+                                  </option>
+                                ))}
+                            </select>
+                            <button type="button" className="btn btn-sm btn-success" onClick={() => handleAddRepToEdit(addRepSelected)} disabled={!addRepSelected}>Confirm Add</button>
+                            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => { setShowAddRepPicker(false); setAddRepSelected('') }}>Cancel</button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   )
                 })() : <p className="text-muted">No data</p>}
               </div>
               <div className="modal-footer">
                 <button className="btn btn-success px-4" onClick={handleSaveEditComm}>Save</button>
-                <button className="btn btn-outline-secondary" onClick={() => { setEditCommInv(null); setEditCommData(null) }}>Cancel</button>
+                <button className="btn btn-outline-secondary" onClick={() => { setEditCommInv(null); setEditCommData(null); setShowAddRepPicker(false); setAddRepSelected('') }}>Cancel</button>
               </div>
             </div>
           </div>
@@ -1858,7 +2123,18 @@ export default function InvoiceList() {
             <div className="modal-content border-0 shadow">
               <div className="modal-header border-bottom" style={{ background: '#f8f9fa' }}>
                 <h5 className="modal-title fw-bold">Commission Details</h5>
-                <button type="button" className="btn-close" onClick={() => { setViewCommInv(null); setViewCommData(null); setShowAddPayment(false) }}></button>
+                <div className="d-flex align-items-center gap-2">
+                  {!isSalesRep && (
+                    <button type="button" className="btn btn-sm btn-warning fw-semibold" onClick={() => {
+                      const inv = viewCommInv
+                      setViewCommInv(null); setViewCommData(null); setShowAddPayment(false)
+                      openEditComm(inv)
+                    }}>
+                      <i className="bi bi-pencil me-1"></i>Edit
+                    </button>
+                  )}
+                  <button type="button" className="btn-close" onClick={() => { setViewCommInv(null); setViewCommData(null); setShowAddPayment(false) }}></button>
+                </div>
               </div>
               <div className="modal-body">
                 {viewCommLoading ? (
@@ -1935,8 +2211,13 @@ export default function InvoiceList() {
                                   <td className="text-end">${(parseFloat(p.partial_com_total || p.partial_comm_total) || 0).toFixed(2)}</td>
                                   <td>{p.commission_paid_date ? fmtDate(p.commission_paid_date) : '-'}</td>
                                   {details.map(d => {
-                                    const repPay = (p.rep_payments || []).find(rp => String(rp.rep_id) === String(d.sales_rep_id))
-                                    const amt = repPay ? (parseFloat(repPay.comm_paid_amount) || 0) : (String(p.rep_id) === String(d.sales_rep_id) ? rcvd : 0)
+                                    // prefer enriched rep_payments; fall back to cross-referencing
+                                    // invoice_payment_reps (payments) by id_inv_payment === payment._id
+                                    const rowRepPays = (p.rep_payments && p.rep_payments.length > 0)
+                                      ? p.rep_payments
+                                      : payments.filter(rp => String(rp.id_inv_payment) === String(p._id))
+                                    const repPay = rowRepPays.find(rp => String(rp.rep_id) === String(d.sales_rep_id))
+                                    const amt = parseFloat(repPay?.comm_paid_amount) || 0
                                     return <td key={d.sales_rep_id} className="text-end">{amt > 0 ? `$${amt.toFixed(2)}` : '-'}</td>
                                   })}
                                 </tr>
@@ -1956,10 +2237,9 @@ export default function InvoiceList() {
                               <td className="text-end">${totalPartialAmt.toFixed(2)}</td>
                               <td></td>
                               {details.map(d => {
-                                const repTotal = mainPayments.reduce((s, p) => {
-                                  const rp = (p.rep_payments || []).find(rp => String(rp.rep_id) === String(d.sales_rep_id))
-                                  return s + (rp ? (parseFloat(rp.comm_paid_amount) || 0) : (String(p.rep_id) === String(d.sales_rep_id) ? (parseFloat(p.received_amt || p.comm_paid_amount) || 0) : 0))
-                                }, 0)
+                                const repTotal = payments
+                                  .filter(rp => String(rp.rep_id) === String(d.sales_rep_id))
+                                  .reduce((s, rp) => s + (parseFloat(rp.comm_paid_amount) || 0), 0)
                                 return <td key={d.sales_rep_id} className="text-end">{repTotal > 0 ? `$${repTotal.toFixed(2)}` : '$0.00'}</td>
                               })}
                             </tr></tfoot>

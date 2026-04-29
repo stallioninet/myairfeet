@@ -312,6 +312,7 @@ export const api = {
   getInvoiceCustomers: () => request('/invoices/lookup/customers'),
   createInvoice: (data) => request('/invoices', { method: 'POST', body: JSON.stringify(data) }),
   updateInvoice: (id, data) => request(`/invoices/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  sendInvoiceEmail: (id, data) => request(`/invoices/${id}/send-email`, { method: 'POST', body: JSON.stringify(data) }),
 
   // Commissions
   getCommissions: (params = {}) => {
@@ -324,7 +325,7 @@ export const api = {
   markCommissionPaid: (id) => request(`/commissions/${id}/paid`, { method: 'PUT' }),
   markCommissionUnpaid: (id) => request(`/commissions/${id}/unpaid`, { method: 'PUT' }),
   deleteCommission: (id) => request(`/commissions/${id}`, { method: 'DELETE' }),
-  getCommissionReps: () => request('/commissions/lookup/reps'),
+  getCommissionReps: (params = {}) => { const q = new URLSearchParams(params).toString(); return request(`/commissions/lookup/reps${q ? '?' + q : ''}`) },
   getCommissionInvoices: () => request('/commissions/lookup/invoices'),
   createCommission: (data) => request('/commissions', { method: 'POST', body: JSON.stringify(data) }),
   updateCommission: (id, data) => request(`/commissions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

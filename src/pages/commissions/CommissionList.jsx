@@ -18,6 +18,8 @@ export default function CommissionList() {
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
   const [filterPaid, setFilterPaid] = useState('') // '' | 'paid' | 'partial' | 'unpaid'
+  const [sortCol, setSortCol] = useState('po_date')
+  const [sortDir, setSortDir] = useState('desc')
   const [deleteComm, setDeleteComm] = useState(null)
   const [viewComm, setViewComm] = useState(null)
   const [viewLoading, setViewLoading] = useState(false)
@@ -480,7 +482,28 @@ export default function CommissionList() {
     }]
   }
 
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage)
+  const sortedFiltered = [...filtered].sort((a, b) => {
+    const dateFields = ['po_date', 'invoice_date']
+    const numFields  = ['total_qty', 'net_amount', 'total_comm', 'pay_status', 'balance']
+    let av = a[sortCol], bv = b[sortCol]
+    let cmp = 0
+    if (dateFields.includes(sortCol)) {
+      cmp = (av ? new Date(av).getTime() : 0) - (bv ? new Date(bv).getTime() : 0)
+    } else if (numFields.includes(sortCol)) {
+      cmp = (parseFloat(av) || 0) - (parseFloat(bv) || 0)
+    } else {
+      cmp = String(av ?? '').toLowerCase().localeCompare(String(bv ?? '').toLowerCase())
+    }
+    return sortDir === 'asc' ? cmp : -cmp
+  })
+
+  function handleSort(col) {
+    if (sortCol === col) { setSortDir(d => d === 'asc' ? 'desc' : 'asc') }
+    else { setSortCol(col); setSortDir('asc') }
+    setPage(1)
+  }
+
+  const paginated = sortedFiltered.slice((page - 1) * perPage, page * perPage)
 
   return (
     <div style={{ width: '100%', overflowX: 'hidden' }}>
@@ -573,14 +596,25 @@ export default function CommissionList() {
           <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
             <thead className="bg-light">
               <tr>
-                <th className="ps-4">Customer</th>
-                <th>Invoice #</th>
-                <th>PO Date</th>
-                <th>PO #</th>
-                <th className="text-center">QTY</th>
-                <th>PO Total</th>
-                <th>Com Total</th>
-                <th className="text-center">Paid</th>
+                {[
+                  { label: 'Customer',  col: 'company_name',   cls: 'ps-4' },
+                  { label: 'Invoice #', col: 'invoice_number'  },
+                  { label: 'PO Date',   col: 'po_date'         },
+                  { label: 'PO #',      col: 'po_number'       },
+                  { label: 'QTY',       col: 'total_qty',      center: true },
+                  { label: 'PO Total',  col: 'net_amount'      },
+                  { label: 'Com Total', col: 'total_comm'      },
+                  { label: 'Paid',      col: 'pay_status',     center: true },
+                ].map(({ label, col, cls = '', center }) => (
+                  <th key={col} className={cls + (center ? ' text-center' : '')}
+                    style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+                    onClick={() => handleSort(col)}>
+                    {label}
+                    <span className="ms-1" style={{ fontSize: 10, opacity: sortCol === col ? 1 : 0.35 }}>
+                      {sortCol === col ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
+                    </span>
+                  </th>
+                ))}
                 <th className="text-center" style={{ width: 140 }}>Action</th>
               </tr>
             </thead>

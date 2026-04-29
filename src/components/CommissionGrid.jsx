@@ -29,6 +29,7 @@ export default function CommissionGrid({
   getRepTotal,    // (repId) => number
   fmtMoney,       // (v) => string
   hiddenModes = [],// modes to hide from the toolbar e.g. ['percent','dollar']
+  onRemoveRep,    // optional (repId) => void — renders an X button per rep header
 }) {
   function itemTotal(idx) {
     const item = items[idx]
@@ -120,7 +121,14 @@ export default function CommissionGrid({
               <th style={{ width: 90,  background: '#EDF6ED' }}>TOTAL</th>
               {reps.map(r => (
                 <th key={r.repId} colSpan={colSpanPerRep}
-                    style={{ minWidth: colSpanPerRep === 2 ? 180 : 110, background: '#FFFFD4', fontSize: 11 }}>
+                    style={{ minWidth: colSpanPerRep === 2 ? 180 : 110, background: '#FFFFD4', fontSize: 11, position: 'relative' }}>
+                  {onRemoveRep && (
+                    <button type="button" onClick={() => onRemoveRep(r.repId)}
+                      style={{ position: 'absolute', top: 2, right: 3, background: 'none', border: 'none', cursor: 'pointer', color: '#dc3545', fontSize: 12, lineHeight: 1, padding: '1px 3px' }}
+                      title="Remove rep">
+                      ✕
+                    </button>
+                  )}
                   <div>{r.repName || '-'}</div>
                   <div style={{ color: '#888', fontSize: 10 }}>{r.repCode || ''}</div>
                   {mode === 'default' && (

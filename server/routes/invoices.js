@@ -1,5 +1,18 @@
 import { Router } from 'express'
 import mongoose from 'mongoose'
+import nodemailer from 'nodemailer'
+
+function createTransport() {
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT) || 465,
+    secure: true,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  })
+}
 
 const router = Router()
 const col = () => mongoose.connection.db.collection('invoices')
@@ -232,6 +245,53 @@ router.get('/email-history', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
+// POST send invoice email with PDF attachment
+router.post('/:id/send-email', async (req, res) => {
+  try {
+    const { to, cc, bcc, subject, message, pdfBase64, filename } = req.body
+    if (!to) return res.status(400).json({ error: 'Recipient email is required' })
+    if (!subject) return res.status(400).json({ error: 'Subject is required' })
+
+    const inv = await col().findOne({ _id: new mongoose.Types.ObjectId(req.params.id) })
+    if (!inv) return res.status(404).json({ error: 'Invoice not found' })
+
+    const transport = createTransport()
+    const mailOptions = {
+      from: `"${process.env.SMTP_FROM_NAME || 'AirFeet'}" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+      to,
+      cc: cc || undefined,
+      bcc: bcc || undefined,
+      subject,
+      html: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#333;">${(message || '').replace(/\n/g, '<br/>')}</div>`,
+      attachments: pdfBase64 ? [{
+        filename: filename || `Invoice_${inv.invoice_number || 'download'}.pdf`,
+        content: pdfBase64.replace(/^data:application\/pdf;base64,/, ''),
+        encoding: 'base64',
+        contentType: 'application/pdf',
+      }] : [],
+    }
+
+    await transport.sendMail(mailOptions)
+
+    // Save to email history
+    const custCol = () => mongoose.connection.db.collection('customers')
+    const customer = inv.company_id ? await custCol().findOne({ legacy_id: inv.company_id }) : null
+    await mongoose.connection.db.collection('send_email_history').insertOne({
+      inv_num: inv.invoice_number || '',
+      po_num: inv.po_number || '',
+      custname: customer?.company_name || inv.company_name || '',
+      type: 'Invoice',
+      sending_mailid: [to, cc, bcc].filter(Boolean).join(', '),
+      subject,
+      send_date: new Date(),
+    })
+
+    res.json({ success: true, message: 'Email sent successfully' })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // GET customer PO files for an invoice
 router.get('/:id/customer-po', async (req, res) => {
   try {
@@ -373,14 +433,40 @@ router.get('/:id/invoice', async (req, res) => {
       items = await poItemsCol.find({ po_id: inv.legacy_id }).toArray()
     }
 
+    // Build rep_info string from commission details for this PO
+    const invCommCol = mongoose.connection.db.collection('invoice_commissions')
+    const salesRepCol = mongoose.connection.db.collection('sales_reps')
+    const commDetails = await invCommCol.find({ po_id: inv.legacy_id, status: { $in: [1, '1'] } }).toArray()
+    let repInfo = ''
+    if (commDetails.length) {
+      const repIds = [...new Set(commDetails.map(d => d.sales_rep_id).filter(Boolean))]
+      const reps = await salesRepCol.find({ legacy_id: { $in: repIds } }).project({ user_cust_code: 1 }).toArray()
+      repInfo = reps.map(r => r.user_cust_code).filter(Boolean).join(', ')
+    }
+
+    // Customer-level order defaults — the invoice doc doesn't store these;
+    // the old PHP JOINed purchase_order with company to get them.
+    const nv = v => (!v || v === 'Null' || v === 'null') ? '' : String(v)
+    const custTerms    = nv(inv.cust_terms)    || nv(customer?.cust_terms)    || ''
+    const custFOB      = nv(inv.customer_FOB)  || nv(customer?.customer_FOB)  || ''
+    const custShip     = nv(inv.cust_ship)     || nv(customer?.cust_ship)     || ''
+    const custShipVia  = nv(inv.cust_ship_via) || nv(customer?.cust_ship_via) || ''
+    const custProject  = nv(inv.cust_project)  || nv(inv.project)             || nv(customer?.cust_project) || ''
+
     res.json({
       ...inv,
       customer,
       company_name: customer?.company_name || '',
+      cust_terms:   custTerms,
+      customer_FOB: custFOB,
+      cust_ship:    custShip,
+      cust_ship_via: custShipVia,
+      cust_project: custProject,
       billingAddr,
       shippingAddr,
       contacts,
       items,
+      rep_info: repInfo,
     })
   } catch (err) {
     res.status(500).json({ error: err.message })
