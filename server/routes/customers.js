@@ -223,10 +223,11 @@ router.get('/:id/invoices', async (req, res) => {
       ? await db.collection('invoice_commission_summary').find({ po_id: { $in: poIds } }).toArray()
       : []
     const commMap = {}
-    commSums.forEach(c => { commMap[c.po_id] = c.legacy_id })
+    commSums.forEach(c => { commMap[c.po_id] = String(c._id) })
 
     const rows = invoices.map((inv, idx) => ({
       line: idx + 1,
+      _id: String(inv._id),
       po_id: inv.legacy_id,
       invoice_number: inv.invoice_number || '',
       po_number: inv.po_number || '',

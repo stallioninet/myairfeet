@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Chart, registerables } from 'chart.js'
 Chart.register(...registerables)
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../lib/api'
 import { CKEditor } from '@ckeditor/ckeditor5-react'
@@ -22,6 +22,7 @@ function getInitials(name) {
 export default function CustomerDetailView({ id: propId }) {
   const { id: paramId } = useParams()
   const id = propId || paramId
+  const navigate = useNavigate()
   const [cust, setCust] = useState(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('details')
@@ -46,6 +47,8 @@ export default function CustomerDetailView({ id: propId }) {
   const [addressForm, setAddressForm] = useState({})
   const [addressSaving, setAddressSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(null) // { type, id, name }
+  const [deleteInvConfirm, setDeleteInvConfirm] = useState(null) // { inv_id, po_id, invoice_number }
+  const [deleteInvLoading, setDeleteInvLoading] = useState(false)
   const [showAddContact, setShowAddContact] = useState(false)
   const [addContactForm, setAddContactForm] = useState({})
   const [addContactSaving, setAddContactSaving] = useState(false)
@@ -436,6 +439,26 @@ export default function CustomerDetailView({ id: propId }) {
   const [commCalcMode, setCommCalcMode] = useState('default')
   const [commItems, setCommItems] = useState([])
   const [commGrid, setCommGrid] = useState({}) // grid[itemIdx][repId] = { base, commission, percent }
+
+  function openInvoiceWindow(invId, mode) {
+    if (!invId || invId === 'undefined' || invId === 'null') { toast.error('Invoice ID not available'); return }
+    const param = mode === 'packing' ? 'packing' : 'view'
+    navigate(`/invoices?${param}=${invId}`)
+  }
+
+  async function handleDeleteInvoice() {
+    if (!deleteInvConfirm) return
+    setDeleteInvLoading(true)
+    try {
+      await api.updateInvoice(deleteInvConfirm.inv_id, { po_status: 2 })
+      toast.success(`Invoice #${deleteInvConfirm.invoice_number} deleted`)
+      setDeleteInvConfirm(null)
+      // Refresh invoice list
+      const fresh = await api.getCustomerInvoices(id, invYear)
+      setInvData(fresh.rows || [])
+    } catch (err) { toast.error(err.message) }
+    setDeleteInvLoading(false)
+  }
 
   async function openAddCommission(poId) {
     setShowCommPopup({ mode: 'add', po_id: poId })
@@ -1356,18 +1379,18 @@ export default function CustomerDetailView({ id: propId }) {
                               {row.comm_id ? (<>
                                 <button className="btn btn-sm d-flex align-items-center justify-content-center"
                                   style={{ width: 28, height: 28, borderRadius: '50%', padding: 0, background: '#fee2e2', color: '#dc2626', border: 'none' }}
-                                  title="Edit Commission" onClick={() => toast('Edit commission #' + row.comm_id + ' — coming soon')}>
+                                  title="Edit Commission" onClick={() => openEditCommission(row.comm_id)}>
                                   <i className="bi bi-pencil-fill" style={{ fontSize: 11 }}></i>
                                 </button>
                                 <button className="btn btn-sm d-flex align-items-center justify-content-center"
                                   style={{ width: 28, height: 28, borderRadius: '50%', padding: 0, background: '#e2e8f0', color: '#475569', border: 'none' }}
-                                  title="View Commission" onClick={() => toast('View commission #' + row.comm_id + ' — coming soon')}>
+                                  title="View Commission" onClick={() => { if (!row.comm_id) return; setShowCommPopup({ mode: 'view', comm_id: row.comm_id }); setCommPopupLoading(true); api.getCommission(row.comm_id).then(d => { setCommPopupData(d); setCommPopupLoading(false) }).catch(err => { toast.error(err.message); setCommPopupLoading(false) }) }}>
                                   <i className="bi bi-eye-fill" style={{ fontSize: 11 }}></i>
                                 </button>
                               </>) : (
                                 <button className="btn btn-sm d-flex align-items-center justify-content-center"
                                   style={{ width: 28, height: 28, borderRadius: '50%', padding: 0, background: '#dcfce7', color: '#16a34a', border: 'none' }}
-                                  title="Add Commission" onClick={() => toast('Add commission for PO #' + row.po_id + ' — coming soon')}>
+                                  title="Add Commission" onClick={() => openAddCommission(row.po_id)}>
                                   <i className="bi bi-plus-lg" style={{ fontSize: 11 }}></i>
                                 </button>
                               )}
@@ -1378,22 +1401,22 @@ export default function CustomerDetailView({ id: propId }) {
                             <div className="d-flex gap-1">
                               <button className="btn btn-sm d-flex align-items-center justify-content-center"
                                 style={{ width: 28, height: 28, borderRadius: '50%', padding: 0, background: '#e2e8f0', color: '#475569', border: 'none' }}
-                                title="Edit Invoice" onClick={() => toast('Edit invoice #' + row.po_id + ' — coming soon')}>
+                                title="Edit Invoice" onClick={() => navigate(`/invoices?edit=${row._id}`)}>
                                 <i className="bi bi-pencil-fill" style={{ fontSize: 11 }}></i>
                               </button>
                               <button className="btn btn-sm d-flex align-items-center justify-content-center"
                                 style={{ width: 28, height: 28, borderRadius: '50%', padding: 0, background: '#dbeafe', color: '#2563eb', border: 'none' }}
-                                title="View Package Slip" onClick={() => toast('View package slip #' + row.po_id + ' — coming soon')}>
+                                title="View Package Slip" onClick={() => openInvoiceWindow(row._id, 'packing')}>
                                 <i className="bi bi-file-earmark-text" style={{ fontSize: 11 }}></i>
                               </button>
                               <button className="btn btn-sm d-flex align-items-center justify-content-center"
                                 style={{ width: 28, height: 28, borderRadius: '50%', padding: 0, background: '#dbeafe', color: '#2563eb', border: 'none' }}
-                                title="View Invoice" onClick={() => toast('View invoice #' + row.po_id + ' — coming soon')}>
+                                title="View Invoice" onClick={() => openInvoiceWindow(row._id, 'invoice')}>
                                 <i className="bi bi-file-text" style={{ fontSize: 11 }}></i>
                               </button>
                               <button className="btn btn-sm d-flex align-items-center justify-content-center"
                                 style={{ width: 28, height: 28, borderRadius: '50%', padding: 0, background: '#fef2f2', color: '#dc2626', border: 'none' }}
-                                title="Delete Invoice" onClick={() => toast('Delete invoice #' + row.po_id + ' — coming soon')}>
+                                title="Delete Invoice" onClick={() => setDeleteInvConfirm({ inv_id: row._id, po_id: row.po_id, invoice_number: row.invoice_number })}>
                                 <i className="bi bi-trash-fill" style={{ fontSize: 11 }}></i>
                               </button>
                             </div>
@@ -2619,6 +2642,30 @@ export default function CustomerDetailView({ id: propId }) {
                 <button className="btn btn-outline-secondary px-4" style={{ borderRadius: 8 }} onClick={() => setDeleteConfirm(null)}>Cancel</button>
                 <button className="btn btn-danger px-4" style={{ borderRadius: 8, fontWeight: 600 }} onClick={handleDelete}>
                   <i className="bi bi-trash3 me-1"></i>Yes, Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </>)}
+
+      {/* Delete Invoice Confirm */}
+      {deleteInvConfirm && (<>
+        <div className="modal-backdrop fade show" style={{ zIndex: 1060 }}></div>
+        <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1065 }} onClick={e => { if (e.target === e.currentTarget) setDeleteInvConfirm(null) }}>
+          <div className="modal-dialog modal-dialog-centered modal-sm">
+            <div className="modal-content border-0" style={{ borderRadius: 16, overflow: 'hidden' }}>
+              <div className="modal-body text-center px-4 py-4">
+                <div className="d-flex align-items-center justify-content-center mx-auto mb-3" style={{ width: 64, height: 64, borderRadius: 16, background: '#fef2f2' }}>
+                  <i className="bi bi-exclamation-triangle-fill" style={{ fontSize: '1.6rem', color: '#ef4444' }}></i>
+                </div>
+                <h6 className="fw-bold mb-2">Delete Invoice?</h6>
+                <p className="text-muted mb-0" style={{ fontSize: '.86rem' }}>Delete Invoice <strong>#{deleteInvConfirm.invoice_number}</strong>? This cannot be undone.</p>
+              </div>
+              <div className="modal-footer border-0 justify-content-center gap-2 px-4 pb-4 pt-0">
+                <button className="btn btn-outline-secondary px-4" style={{ borderRadius: 8 }} onClick={() => setDeleteInvConfirm(null)} disabled={deleteInvLoading}>Cancel</button>
+                <button className="btn btn-danger px-4" style={{ borderRadius: 8, fontWeight: 600 }} onClick={handleDeleteInvoice} disabled={deleteInvLoading}>
+                  {deleteInvLoading ? <span className="spinner-border spinner-border-sm me-1"></span> : <i className="bi bi-trash3 me-1"></i>}Yes, Delete
                 </button>
               </div>
             </div>

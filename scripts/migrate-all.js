@@ -288,6 +288,7 @@ async function migrate() {
   if (companies.length > 0) {
     await db.collection('customers').drop().catch(() => {})
     const docs = companies.map(c => ({
+      legacy_id: parseInt(c.id_company) || 0,
       company_name: c.company_name || '',
       customer_type: c.customer_type || '',
       contact: c.company_contact || '',
@@ -303,7 +304,7 @@ async function migrate() {
       ship_via: c.cust_ship_via || '',
       project: c.cust_project || '',
       send_due_email: c.send_duemail === '1',
-      status: c.company_status === '1' ? 'active' : 'inactive',
+      status: c.company_status === '1' ? 'active' : c.company_status === '4' ? 'pilot' : 'inactive',
       created_at: validDate(c.company_created_on) || new Date(),
       updated_at: validDate(c.company_modified_on) || new Date(),
       _oldId: parseInt(c.id_company)

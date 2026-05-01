@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import html2pdf from 'html2pdf.js'
 import { api } from '../../lib/api'
@@ -13,6 +13,7 @@ import CommissionGrid from '../../components/CommissionGrid'
 export default function InvoiceList() {
   const [_user] = useState(() => getStoredUser())
   const isSalesRep = isSalesRepUser(_user)
+  const [searchParams, setSearchParams] = useSearchParams()
   const repIdRef = useRef(null)
   const initDoneRef = useRef(false)
   const [invoices, setInvoices] = useState([])
@@ -109,6 +110,25 @@ export default function InvoiceList() {
     }
   }, [])
   useEffect(() => { if (initDoneRef.current) fetchData() }, [year])
+
+  // Auto-open edit or view for a specific invoice from ?edit= or ?view= or ?packing= param
+  useEffect(() => {
+    const editId = searchParams.get('edit')
+    const viewId = searchParams.get('view')
+    const packingId = searchParams.get('packing')
+    const id = editId || viewId || packingId
+    if (!id) return
+    const mode = packingId ? 'packing' : 'invoice'
+    if (editId) {
+      api.getInvoice(editId).then(inv => {
+        if (inv) { openEdit(inv); setSearchParams({}, { replace: true }) }
+      }).catch(() => toast.error('Invoice not found'))
+    } else {
+      api.getInvoiceView(id).then(inv => {
+        if (inv) { openView(inv, mode); setSearchParams({}, { replace: true }) }
+      }).catch(() => toast.error('Invoice not found'))
+    }
+  }, [])
 
   async function fetchYears() {
     try {

@@ -13,7 +13,8 @@
       "mcp__plugin_playwright_playwright__browser_evaluate",
       "Bash(node scripts/migrate-invoices.js)",
       "Bash(Get-ChildItem -Path \"E:\\\\xmapp\\\\htdocs\\\\523app\" -Directory)",
-      "Bash(Select-Object Name)"
+      "Bash(Select-Object Name)",
+      "WebFetch(domain:localhost)"
     ]
   }
 }

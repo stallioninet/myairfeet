@@ -206,11 +206,12 @@ router.get('/', async (req, res) => {
       return n != null ? [n, String(n), s] : [s]
     }).filter(Boolean))]
 
-    // Resolve tax state names for location column
+    // Resolve tax state names for location column (old_tax_id stored as string, salesTax_state_id as number)
     const taxIds = [...new Set(events.map(e => e.salesTax_state_id).filter(Boolean))]
-    const taxes = taxIds.length > 0 ? await col('tax_rates').find({ sales_tax_id: { $in: taxIds } }).toArray() : []
+    const taxIdStrs = taxIds.map(String)
+    const taxes = taxIdStrs.length > 0 ? await col('tax_rates').find({ old_tax_id: { $in: taxIdStrs } }).toArray() : []
     const taxMap = {}
-    taxes.forEach(t => { taxMap[t.sales_tax_id] = t.sales_tax_item_name || '' })
+    taxes.forEach(t => { taxMap[parseInt(t.old_tax_id)] = t.name || '' })
 
     // Fetch receipt totals grouped by event_id
     const receipts = await col('event_day_receipt_info').aggregate([
@@ -331,8 +332,8 @@ router.get('/:id', async (req, res) => {
     // Resolve sales tax state name
     let salesTax_state_name = ''
     if (event.salesTax_state_id) {
-      const tax = await col('tax_rates').findOne({ $or: [{ sales_tax_id: event.salesTax_state_id }, { legacy_id: event.salesTax_state_id }] })
-      salesTax_state_name = tax?.sales_tax_item_name || tax?.name || ''
+      const tax = await col('tax_rates').findOne({ old_tax_id: String(event.salesTax_state_id) })
+      salesTax_state_name = tax?.name || ''
     }
 
     // Resolve product names for items

@@ -9,6 +9,8 @@ const col = mongoose.connection.db.collection('customers')
 
 // These legacy IDs had company_status=4 (Pilot) in the original SQL
 // but were incorrectly migrated as 'inactive'
+// Customers with company_status=4 (Pilot) in the original SQL
+// Extracted from co523.sql; migrate-all.js was incorrectly mapping status 4 → inactive
 const pilotLegacyIds = [6, 7, 11, 18, 20, 97, 105, 111, 122, 129, 132, 133]
 
 const result = await col.updateMany(

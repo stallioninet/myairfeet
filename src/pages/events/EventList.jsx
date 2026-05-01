@@ -409,7 +409,8 @@ export default function EventList() {
       const s = search.toLowerCase()
       if (!(e.name || '').toLowerCase().includes(s) &&
         !(e.location || '').toLowerCase().includes(s) &&
-        !(e.old_event_id || '').toLowerCase().includes(s)) return false
+        !(e.event_number || '').toLowerCase().includes(s) &&
+        !String(e.old_event_id || '').toLowerCase().includes(s)) return false
     }
     return true
   })

@@ -30,7 +30,15 @@ router.get('/', async (req, res) => {
     const filter = {}
     if (req.query.status) filter.status = req.query.status
     const data = await col().find(filter).sort({ legacy_id: -1 }).toArray()
-    res.json(data)
+
+    // Join supplier names
+    const supplierIds = [...new Set(data.map(p => p.supplier_id).filter(Boolean))]
+    const suppliers = supplierIds.length
+      ? await suppCol().find({ legacy_id: { $in: supplierIds } }).project({ legacy_id: 1, supplier_name: 1 }).toArray()
+      : []
+    const suppMap = Object.fromEntries(suppliers.map(s => [s.legacy_id, s.supplier_name]))
+
+    res.json(data.map(p => ({ ...p, supplier_name: suppMap[p.supplier_id] || '' })))
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
