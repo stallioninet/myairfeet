@@ -397,4 +397,5 @@ export const api = {
     return request(`/reports/paid-summary${q ? '?' + q : ''}`)
   },
   getReportYears: () => request('/reports/years'),
+  getNotifications: () => request('/notifications'),
 }
