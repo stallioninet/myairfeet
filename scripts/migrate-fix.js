@@ -1,7 +1,8 @@
+import 'dotenv/config'
 import mongoose from 'mongoose'
 import fs from 'fs'
 
-const MONGO_URI = 'mongodb+srv://523:AAJfuYEce0N5elui@cluster0.dg7goyw.mongodb.net/?appName=Cluster0'
+const MONGO_URI = process.env.MONGO_URI
 const SQL_FILE = 'E:/projcet/523/myairfee_8qvsun15.sql'
 
 function parseInserts(sql, tableName) {
@@ -52,7 +53,7 @@ function validDate(d) {
 async function fix() {
   console.log('Reading SQL...')
   const sql = fs.readFileSync(SQL_FILE, 'utf-8')
-  await mongoose.connect(MONGO_URI, { dbName: '523' })
+  await mongoose.connect(MONGO_URI, { dbName: 'app' })
   const db = mongoose.connection.db
 
   // Build company_id -> MongoDB _id map from customers

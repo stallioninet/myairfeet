@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import html2pdf from 'html2pdf.js'
 import { api } from '../lib/api'
+import { COMPANY, ASSETS } from '../lib/config'
 
 const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']
 const PHONE_TYPES = ['Main', 'Work', 'Desk', 'Home', 'Mobile']
@@ -1110,19 +1111,19 @@ export default function SalesRepDetailView({ id: propId }) {
                         {/* Company Header - invoice-logo row */}
                         <div className="row mb-3 align-items-start">
                           <div className="col-3">
-                            <img src="https://staging.stallioni.com/assets/images/logo_insole.png" alt="AIRfeet" style={{ maxWidth: '100%', height: 'auto', maxHeight: 70 }} />
+                            <img src={ASSETS.logoInsole} alt="AIRfeet" style={{ maxWidth: '100%', height: 'auto', maxHeight: 70 }} />
                             <div className="fst-italic mt-1" style={{ color: '#8B6914', fontSize: 12 }}>"It's like walking on air"</div>
                           </div>
                           <div className="col-3" style={{ fontSize: 13 }}>
-                            <div className="fw-bold">Airfeet LLC</div>
-                            <div>2346 S. Lynhurst Dr</div>
-                            <div>Suite 701</div>
-                            <div>Indianapolis Indiana 46241</div>
+                            <div className="fw-bold">{COMPANY.name}</div>
+                            <div>{COMPANY.address1}</div>
+                            <div>{COMPANY.address2}</div>
+                            <div>{COMPANY.cityStateZip}</div>
                           </div>
                           <div className="col-2" style={{ fontSize: 13 }}>
-                            <div>317-965-5212</div>
-                            <div><u className="text-primary">info@myairfeet.com</u></div>
-                            <div><u className="text-primary">www.myairfeet.com</u></div>
+                            <div>{COMPANY.phone}</div>
+                            <div><u className="text-primary">{COMPANY.email}</u></div>
+                            <div><u className="text-primary">{COMPANY.website}</u></div>
                           </div>
                           <div className="col-4 text-end">
                             <div className="fw-bold mb-1" style={{ fontSize: 22 }}>Invoice</div>
@@ -1276,19 +1277,19 @@ export default function SalesRepDetailView({ id: propId }) {
                         {/* Company Header */}
                         <div className="row mb-3 align-items-start">
                           <div className="col-3">
-                            <img src="https://staging.stallioni.com/assets/images/logo_insole.png" alt="AIRfeet" style={{ maxWidth: '100%', height: 'auto', maxHeight: 70 }} />
+                            <img src={ASSETS.logoInsole} alt="AIRfeet" style={{ maxWidth: '100%', height: 'auto', maxHeight: 70 }} />
                             <div className="fst-italic mt-1" style={{ color: '#8B6914', fontSize: 12 }}>"It's like walking on air"</div>
                           </div>
                           <div className="col-3" style={{ fontSize: 13 }}>
-                            <div className="fw-bold">Airfeet LLC</div>
-                            <div>2346 S. Lynhurst Dr</div>
-                            <div>Suite 701</div>
-                            <div>Indianapolis Indiana 46241</div>
+                            <div className="fw-bold">{COMPANY.name}</div>
+                            <div>{COMPANY.address1}</div>
+                            <div>{COMPANY.address2}</div>
+                            <div>{COMPANY.cityStateZip}</div>
                           </div>
                           <div className="col-2" style={{ fontSize: 13 }}>
-                            <div>317-965-5212</div>
-                            <div><u className="text-primary">info@myairfeet.com</u></div>
-                            <div><u className="text-primary">www.myairfeet.com</u></div>
+                            <div>{COMPANY.phone}</div>
+                            <div><u className="text-primary">{COMPANY.email}</u></div>
+                            <div><u className="text-primary">{COMPANY.website}</u></div>
                           </div>
                           <div className="col-4 text-end">
                             <div className="fw-bold mb-1" style={{ fontSize: 22 }}>Packing Slip</div>

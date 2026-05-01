@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import html2pdf from 'html2pdf.js'
 import { api } from '../../lib/api'
+import { COMPANY, ASSETS } from '../../lib/config'
 import { CKEditor } from '@ckeditor/ckeditor5-react'
 import ClassicEditor from '@ckeditor/ckeditor5-build-classic'
 
@@ -1058,13 +1059,13 @@ export default function ViewSupplier() {
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                           <div style={{ textAlign: 'center', minWidth: 120 }}>
-                            <img src="https://staging.stallioni.com/assets/images/logo_fleet.png" alt="Airfeet" style={{ width: 110, marginBottom: 4 }} crossOrigin="anonymous" />
+                            <img src={ASSETS.logoFleet} alt="Airfeet" style={{ width: 110, marginBottom: 4 }} crossOrigin="anonymous" />
                             <div style={{ fontSize: 10, fontStyle: 'italic', color: '#555' }}>"It's like walking on air"</div>
                           </div>
                           <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                            <div style={{ fontWeight: 'bold' }}>Airfeet LLC</div>
-                            <div>2346 S. Lynhurst Dr, Suite 701</div>
-                            <div>Indianapolis Indiana 46241</div>
+                            <div style={{ fontWeight: 'bold' }}>{COMPANY.name}</div>
+                            <div>{COMPANY.address1}, {COMPANY.address2}</div>
+                            <div>{COMPANY.cityStateZip}</div>
                           </div>
                         </div>
                       </div>
@@ -1100,9 +1101,9 @@ export default function ViewSupplier() {
                         <table className="table table-bordered table-sm mb-0">
                           <thead><tr><th className="bg-light">Ship To</th></tr></thead>
                           <tbody><tr><td style={{ padding: '10px 12px' }}>
-                            <div style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>Airfeet LLC</div>
-                            <div>2346 S. Lynhurst Dr, Suite 701</div>
-                            <div>Indianapolis, IN 46241</div>
+                            <div style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>{COMPANY.name}</div>
+                            <div>{COMPANY.address1}, {COMPANY.address2}</div>
+                            <div>{COMPANY.cityStateZip}</div>
                           </td></tr></tbody>
                         </table>
                       </div>

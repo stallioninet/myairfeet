@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import html2pdf from 'html2pdf.js'
 import { api } from '../../lib/api'
+import { COMPANY } from '../../lib/config'
 import { isSalesRepUser, getStoredUser, resolveRepId } from '../../lib/repAuth'
 import Pagination from '../../components/Pagination'
 import PageChartHeader from '../../components/PageChartHeader'
@@ -929,7 +930,7 @@ export default function InvoiceList() {
       cc: '',
       bcc: '',
       subject: `Invoice ${invNum} - ${custName}`,
-      message: `Please find attached Invoice ${invNum}.\n\nThank you,\nAirfeet LLC`,
+      message: `Please find attached Invoice ${invNum}.\n\nThank you,\n${COMPANY.name}`,
     })
     // Generate PDF now while invoice is fully visible (before modal opens)
     // Use blob → FileReader for reliable base64 encoding
@@ -1777,14 +1778,14 @@ export default function InvoiceList() {
                         <span style={{ fontSize: 11, fontStyle: 'italic', fontWeight: 'bold' }}>"It's like walking on air"</span>
                       </td>
                       <td style={{ width: '25%', verticalAlign: 'top', fontSize: 13 }}>
-                        <div style={{ fontSize: 17, fontWeight: 'bold' }}>Airfeet LLC</div>
-                        <div>2346 S. Lynhurst Dr, Suite 701</div>
-                        <div>Indianapolis, IN 46241</div>
+                        <div style={{ fontSize: 17, fontWeight: 'bold' }}>{COMPANY.name}</div>
+                        <div>{COMPANY.address1}, {COMPANY.address2}</div>
+                        <div>{COMPANY.cityStateZip}</div>
                       </td>
                       <td style={{ width: '25%', verticalAlign: 'top', fontSize: 13 }}>
-                        <div>317-965-5212</div>
-                        <div><u>info@myairfeet.com</u></div>
-                        <div><u>www.myairfeet.com</u></div>
+                        <div>{COMPANY.phone}</div>
+                        <div><u>{COMPANY.email}</u></div>
+                        <div><u>{COMPANY.website}</u></div>
                       </td>
                       <td style={{ width: '25%', verticalAlign: 'top' }}>
                         <p style={{ fontSize: 17, fontWeight: 'bold', textAlign: 'right', margin: '0 0 3px' }}>{label}</p>

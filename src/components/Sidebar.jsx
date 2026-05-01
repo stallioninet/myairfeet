@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { useState } from 'react'
+import { ASSETS } from '../lib/config'
 
 // adminOnly: true  →  hidden from sales-rep
 // salesOnly: true  →  hidden from admin/superuser (not used currently)
@@ -122,7 +123,7 @@ export default function Sidebar({ isOpen, onClose, user }) {
       </button>
 
       <div className="sidebar-brand">
-        <img src="https://staging.stallioni.com/assets/images/logo_fleet.png" alt="Commission Tracker" style={{ maxWidth: '100%', height: 'auto', maxHeight: 45 }} />
+        <img src={ASSETS.logoFleet} alt="Commission Tracker" style={{ maxWidth: '100%', height: 'auto', maxHeight: 45 }} />
         <h5>Commission Tracker</h5>
       </div>
 

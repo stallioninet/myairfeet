@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import html2pdf from 'html2pdf.js'
 import { api } from '../../lib/api'
+import { COMPANY, ASSETS } from '../../lib/config'
 import Pagination from '../../components/Pagination'
 
 export default function AirfeetPoList() {
@@ -357,7 +358,7 @@ export default function AirfeetPoList() {
       cc: '',
       bcc: '',
       subject: `Purchase Order - ${poNum}`,
-      message: `Please find attached Purchase Order ${poNum}.\n\nThank you,\nAirfeet LLC`,
+      message: `Please find attached Purchase Order ${poNum}.\n\nThank you,\n${COMPANY.name}`,
     })
     setShowEmailModal(true)
   }
@@ -804,14 +805,14 @@ export default function AirfeetPoList() {
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                           <div style={{ textAlign: 'center', minWidth: 120 }}>
-                            <img src="https://staging.stallioni.com/assets/images/logo_fleet.png" alt="Airfeet" style={{ width: 110, marginBottom: 4 }} crossOrigin="anonymous" />
+                            <img src={ASSETS.logoFleet} alt="Airfeet" style={{ width: 110, marginBottom: 4 }} crossOrigin="anonymous" />
                             <div style={{ fontSize: 10, fontStyle: 'italic', color: '#555' }}>"It's like walking on air"</div>
                           </div>
                           <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                            <div style={{ fontWeight: 'bold' }}>Airfeet LLC</div>
-                            <div>2346 S. Lynhurst Dr</div>
-                            <div>Suite 701</div>
-                            <div>Indianapolis Indiana 46241</div>
+                            <div style={{ fontWeight: 'bold' }}>{COMPANY.name}</div>
+                            <div>{COMPANY.address1}</div>
+                            <div>{COMPANY.address2}</div>
+                            <div>{COMPANY.cityStateZip}</div>
                           </div>
                         </div>
                       </div>
@@ -948,7 +949,7 @@ export default function AirfeetPoList() {
                     <table className="table table-bordered table-sm mb-3" style={{ width: '50%' }}>
                       <tbody>
                         <tr><td><b>Phone #</b></td><td><b>Email</b></td></tr>
-                        <tr><td>317-965-5212</td><td>info@myairfeet.com</td></tr>
+                        <tr><td>{COMPANY.phone}</td><td>{COMPANY.email}</td></tr>
                       </tbody>
                     </table>
 

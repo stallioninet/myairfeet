@@ -26,7 +26,7 @@ const SKIP_COLLECTIONS = new Set([
 
 async function run() {
   console.log('Connecting to MongoDB Atlas …')
-  await mongoose.connect(MONGO_URI, { dbName: '523' })
+  await mongoose.connect(MONGO_URI, { dbName: 'app' })
   console.log('Connected.')
 
   const db = mongoose.connection.db

@@ -206,6 +206,11 @@ export const api = {
   deleteAddress: (custId, addressId) => request(`/customers/${custId}/addresses/${addressId}`, { method: 'DELETE' }),
   createEmails: (custId, emails) => request(`/customers/${custId}/emails`, { method: 'POST', body: JSON.stringify({ emails }) }),
   deleteEmail: (custId, emailId) => request(`/customers/${custId}/emails/${emailId}`, { method: 'DELETE' }),
+  getCustomerDashboard: (id, period, dateFrom, dateTo) => {
+    const params = new URLSearchParams({ period: period || 'year' })
+    if (period === 'custom' && dateFrom && dateTo) { params.set('date_from', dateFrom); params.set('date_to', dateTo) }
+    return request(`/customers/${id}/dashboard?${params.toString()}`)
+  },
   getCustomerInvoices: (id, year) => request(`/customers/${id}/invoices${year ? '?year=' + year : ''}`),
   getCustomerHistory: (id) => request(`/customers/${id}/history`),
   getCustomerCommissions: (id) => request(`/customers/${id}/commissions`),
@@ -329,7 +334,14 @@ export const api = {
   getCommissionInvoices: () => request('/commissions/lookup/invoices'),
   createCommission: (data) => request('/commissions', { method: 'POST', body: JSON.stringify(data) }),
   updateCommission: (id, data) => request(`/commissions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  addCommissionPayment: (id, data) => request(`/commissions/${id}/payment`, { method: 'POST', body: JSON.stringify(data) }),
+  addCommissionPayment: (id, formData) => {
+    if (formData instanceof FormData) {
+      return request(`/commissions/${id}/payment`, { method: 'POST', body: formData })
+    }
+    return request(`/commissions/${id}/payment`, { method: 'POST', body: JSON.stringify(formData) })
+  },
+  editCommissionPayment: (id, paymentId, data) => request(`/commissions/${id}/payment/${paymentId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  archiveCommissionInvoice: (id, archive) => request(`/commissions/${id}/archive`, { method: 'PUT', body: JSON.stringify({ archive }) }),
   getCommissionReport: (params = {}) => {
     const q = new URLSearchParams(params).toString()
     return request(`/commissions/report${q ? '?' + q : ''}`)
@@ -368,12 +380,21 @@ export const api = {
   getReportMonth: (year) => request(`/reports/month${year ? '?year=' + year : ''}`),
   getReportSalesRepMonth: (year) => request(`/reports/sales-rep-month${year ? '?year=' + year : ''}`),
   getReportSalesRepYear: () => request('/reports/sales-rep-year'),
-  getReportPaidInvoices: (from, to) => {
+  getReportPaidInvoices: (from, to, companyId) => {
     const params = new URLSearchParams()
     if (from) params.set('from', from)
     if (to) params.set('to', to)
+    if (companyId) params.set('company_id', companyId)
     const q = params.toString()
     return request(`/reports/paid-invoices${q ? '?' + q : ''}`)
+  },
+  getReportPaidSummary: (from, to, companyId) => {
+    const params = new URLSearchParams()
+    if (from) params.set('from', from)
+    if (to) params.set('to', to)
+    if (companyId) params.set('company_id', companyId)
+    const q = params.toString()
+    return request(`/reports/paid-summary${q ? '?' + q : ''}`)
   },
   getReportYears: () => request('/reports/years'),
 }

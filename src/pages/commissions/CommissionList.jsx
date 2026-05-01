@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { Chart, registerables } from 'chart.js'
 import { api } from '../../lib/api'
 import { isSalesRepUser, getStoredUser, resolveRepId } from '../../lib/repAuth'
 import Pagination from '../../components/Pagination'
-import PageChartHeader from '../../components/PageChartHeader'
 import CommissionGrid from '../../components/CommissionGrid'
+
+Chart.register(...registerables)
 
 export default function CommissionList() {
   const [_user] = useState(() => getStoredUser())
@@ -14,6 +16,10 @@ export default function CommissionList() {
   const [commissions, setCommissions] = useState([])
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({ total: 0, totalComm: 0 })
+  const [topReps, setTopReps] = useState([])
+  const [chartType, setChartType] = useState('donut')
+  const analyticsChartRef = useRef(null)
+  const analyticsChartInst = useRef(null)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
@@ -40,6 +46,14 @@ export default function CommissionList() {
   const [payLoading, setPayLoading] = useState(false)
   const [payForm, setPayForm] = useState({ commission_paid_date: '', received_date: '', received_amount: '', paid_mode: '', partial_comm_total: '', mark_paid: false })
   const [payRepAmounts, setPayRepAmounts] = useState({}) // {rep_id: paid_amount}
+  const [checkImgFile, setCheckImgFile] = useState(null)
+  const [checkImgPreview, setCheckImgPreview] = useState(null)
+  const [contactEmails, setContactEmails] = useState([]) // available emails for notification
+  const [selectedEmails, setSelectedEmails] = useState([]) // chosen notification emails
+  const [editPaymentData, setEditPaymentData] = useState(null) // {payment, comm} for editing
+  const [editPayForm, setEditPayForm] = useState({ commission_paid_date: '', received_date: '', received_amount: '', paid_mode: '', partial_comm_total: '', mark_paid: false })
+  const [editPayRepAmounts, setEditPayRepAmounts] = useState({})
+  const [editPaySaving, setEditPaySaving] = useState(false)
 
   useEffect(() => {
     if (!isSalesRep) { fetchData(); return }
@@ -56,6 +70,7 @@ export default function CommissionList() {
       ])
       setCommissions(data || [])
       setStats(statsData || {})
+      setTopReps(statsData?.topReps || [])
     } catch (err) {
       toast.error('Failed to load: ' + err.message)
     }
@@ -348,10 +363,13 @@ export default function CommissionList() {
       setPayComm(data)
       const today = new Date().toISOString().slice(0, 10)
       setPayForm({ commission_paid_date: today, received_date: today, received_amount: '', paid_mode: '', partial_comm_total: '', mark_paid: false })
+      setCheckImgFile(null)
+      setCheckImgPreview(null)
+      setSelectedEmails([])
+      setContactEmails(data.contactEmails || [])
       // Pre-fill rep amounts with outstanding balance
       const repAmts = {}
       ;(data.details || []).forEach(d => {
-        // Find existing payments for this rep
         const paidForRep = (data.payments || []).filter(p => String(p.rep_id) === String(d.sales_rep_id)).reduce((s, p) => s + (parseFloat(p.comm_paid_amount) || 0), 0)
         const repTotal = parseFloat(d.total_price) || 0
         const balance = repTotal - paidForRep
@@ -360,6 +378,43 @@ export default function CommissionList() {
       setPayRepAmounts(repAmts)
     } catch (err) { toast.error('Failed to load: ' + err.message) }
     setPayLoading(false)
+  }
+
+  function openEditPayment(payment, comm) {
+    setEditPaymentData({ payment, comm })
+    setEditPayForm({
+      commission_paid_date: payment.commission_paid_date || payment.comm_paid_date || '',
+      received_date: payment.received_date || '',
+      received_amount: String(payment.received_amt || ''),
+      paid_mode: payment.compaid_mode || '',
+      partial_comm_total: String(payment.partial_com_total || ''),
+      mark_paid: false,
+    })
+    const repAmts = {}
+    ;(comm.details || []).forEach(d => {
+      const repPay = (payment.rep_payments || []).find(rp => String(rp.rep_id) === String(d.sales_rep_id))
+      const repTotal = parseFloat(d.total_price) || 0
+      repAmts[d.sales_rep_id] = { org_amount: repTotal, balance: repTotal, paid_amount: String(parseFloat(repPay?.comm_paid_amount) || '') }
+    })
+    setEditPayRepAmounts(repAmts)
+  }
+
+  async function handleSaveEditPayment(e) {
+    e.preventDefault()
+    if (!editPaymentData) return
+    setEditPaySaving(true)
+    try {
+      const repPayments = Object.entries(editPayRepAmounts).map(([repId, d]) => ({ rep_id: repId, paid_amount: d.paid_amount }))
+      await api.editCommissionPayment(editPaymentData.comm._id, String(editPaymentData.payment._id), { ...editPayForm, rep_payments: repPayments })
+      toast.success('Payment updated')
+      setEditPaymentData(null)
+      // Refresh view commission
+      if (viewComm) {
+        const fresh = await api.getCommission(viewComm._id)
+        setViewComm(fresh)
+      }
+    } catch (err) { toast.error(err.message) }
+    setEditPaySaving(false)
   }
 
   async function handleSavePayment(e) {
@@ -379,12 +434,19 @@ export default function CommissionList() {
     if (hasError) return
     try {
       const rep_payments = Object.entries(payRepAmounts).filter(([_, v]) => parseFloat(v.paid_amount) > 0).map(([repId, v]) => ({
-        rep_id: repId,
-        org_amount: v.org_amount,
-        paid_amount: v.paid_amount,
-        balance: v.balance,
+        rep_id: repId, org_amount: v.org_amount, paid_amount: v.paid_amount, balance: v.balance,
       }))
-      await api.addCommissionPayment(payComm._id, { ...payForm, rep_payments })
+      let payload
+      if (checkImgFile) {
+        payload = new FormData()
+        Object.entries(payForm).forEach(([k, v]) => payload.append(k, v))
+        payload.append('rep_payments', JSON.stringify(rep_payments))
+        payload.append('notify_emails', JSON.stringify(selectedEmails))
+        payload.append('check_image', checkImgFile)
+      } else {
+        payload = { ...payForm, rep_payments, notify_emails: selectedEmails }
+      }
+      await api.addCommissionPayment(payComm._id, payload)
       toast.success('Payment recorded successfully')
       setPayComm(null)
       fetchData()
@@ -465,8 +527,54 @@ export default function CommissionList() {
     paid: commissions.filter(c => c.pay_status === 2).length,
     partial: commissions.filter(c => c.pay_status === 1).length,
     unpaid: commissions.filter(c => c.pay_status === 0).length,
-    totalComm: commissions.reduce((s, c) => s + (c.total_comm || 0), 0)
+    totalComm: commissions.reduce((s, c) => s + (c.total_comm || 0), 0),
+    paidAmt: commissions.filter(c => c.pay_status === 2).reduce((s, c) => s + (c.total_comm || 0), 0),
+    unpaidAmt: commissions.filter(c => c.pay_status === 0).reduce((s, c) => s + (c.total_comm || 0), 0),
   }
+
+  // Analytics chart — rebuild whenever data or type changes
+  useEffect(() => {
+    if (!analyticsChartRef.current) return
+    if (analyticsChartInst.current) { analyticsChartInst.current.destroy(); analyticsChartInst.current = null }
+    const paidAmt = statusStats.paidAmt
+    const unpaidAmt = statusStats.unpaidAmt
+    const paidCnt = statusStats.paid
+    const unpaidCnt = statusStats.unpaid
+    let cfg
+    if (chartType === 'donut' || chartType === 'pie') {
+      cfg = {
+        type: 'doughnut',
+        data: { labels: ['Paid', 'Unpaid'], datasets: [{ data: [paidAmt, unpaidAmt], backgroundColor: ['#10b981', '#ef4444'], borderWidth: 0 }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          cutout: chartType === 'donut' ? '55%' : '0%',
+          plugins: { legend: { position: 'bottom', labels: { font: { size: 12 }, usePointStyle: true } },
+            tooltip: { callbacks: { label: ctx => ` $${Number(ctx.raw).toLocaleString('en-US',{minimumFractionDigits:2})} (${ctx.parsed ? ((ctx.parsed/(paidAmt+unpaidAmt||1))*100).toFixed(1) : 0}%)` } } },
+        },
+      }
+    } else {
+      cfg = {
+        type: 'bar',
+        data: {
+          labels: ['Paid', 'Unpaid'],
+          datasets: [
+            { label: 'Amount ($)', data: [paidAmt, unpaidAmt], backgroundColor: ['#10b981', '#ef4444'], borderRadius: 4, yAxisID: 'y' },
+            { label: 'Count', data: [paidCnt, unpaidCnt], backgroundColor: ['rgba(16,185,129,0.3)', 'rgba(239,68,68,0.3)'], borderRadius: 4, yAxisID: 'y2' },
+          ],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { font: { size: 12 } } } },
+          scales: {
+            y: { position: 'left', ticks: { callback: v => '$' + Number(v).toLocaleString() }, grid: { color: '#f3f4f6' } },
+            y2: { position: 'right', ticks: { color: '#3b82f6' }, grid: { display: false } },
+          },
+        },
+      }
+    }
+    analyticsChartInst.current = new Chart(analyticsChartRef.current, cfg)
+    return () => { if (analyticsChartInst.current) { analyticsChartInst.current.destroy(); analyticsChartInst.current = null } }
+  }, [statusStats.paidAmt, statusStats.unpaidAmt, statusStats.paid, statusStats.unpaid, chartType])
 
   const chartData = {
     labels: ['Paid Full', 'Partial', 'Not Paid'],
@@ -505,54 +613,106 @@ export default function CommissionList() {
 
   const paginated = sortedFiltered.slice((page - 1) * perPage, page * perPage)
 
+  const rankColors = ['#f59e0b','#6366f1','#10b981','#8b5cf6','#ec4899']
+
   return (
     <div style={{ width: '100%', overflowX: 'hidden' }}>
-      <PageChartHeader
-        title="Commission Tracker"
-        subtitle="Track and manage sales rep commissions and payments"
-        breadcrumbs={[{ label: 'Dashboard', link: '/dashboard' }, { label: 'Commissions' }]}
-        chartType="doughnut"
-        chartData={chartData}
-        stats={[
-          {
-            label: 'Total Commissions',
-            value: statusStats.totalComm ? fmtMoney(statusStats.totalComm) : '$0.00',
-            icon: 'bi-cash-stack',
-            bg: '#eff6ff',
-            color: '#2563eb',
-            onClick: () => setFilterPaid('')
-          },
-          {
-            label: 'Paid (🟢)',
-            value: statusStats.paid,
-            icon: 'bi-check-circle',
-            bg: '#f0fdf4',
-            color: '#16a34a',
-            onClick: () => setFilterPaid('paid')
-          },
-          {
-            label: 'Partial (🟡)',
-            value: statusStats.partial,
-            icon: 'bi-clock-history',
-            bg: '#fff7ed',
-            color: '#ea580c',
-            onClick: () => setFilterPaid('partial')
-          },
-          {
-            label: 'Not Paid (🔴)',
-            value: statusStats.unpaid,
-            icon: 'bi-exclamation-circle',
-            bg: '#fef2f2',
-            color: '#dc2626',
-            onClick: () => setFilterPaid('unpaid')
-          }
-        ]}
-        actions={!isSalesRep && (
+
+      {/* Page header */}
+      <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div>
+          <nav aria-label="breadcrumb"><ol className="breadcrumb mb-1" style={{ fontSize: 12 }}>
+            <li className="breadcrumb-item"><Link to="/dashboard"><i className="bi bi-house-door"></i></Link></li>
+            <li className="breadcrumb-item active">Commissions</li>
+          </ol></nav>
+          <h4 className="mb-0 fw-bold" style={{ color: '#1e293b' }}>Commission Details</h4>
+        </div>
+        {!isSalesRep && (
           <button className="btn btn-primary px-4 shadow-sm" style={{ borderRadius: 12, fontWeight: 600 }} onClick={openCreate}>
             <i className="bi bi-plus-lg me-1"></i> Add Commission
           </button>
         )}
-      />
+      </div>
+
+      {/* Analytics Dashboard — matches old site: 2×2 stats | chart | top reps */}
+      <div className="d-flex gap-3 flex-wrap mb-3" style={{ alignItems: 'stretch' }}>
+
+        {/* Left: 2×2 stat cards */}
+        <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 12 }}>
+            {[
+              { label: 'Total Commissions', value: statusStats.paid + statusStats.partial + statusStats.unpaid, icon: 'bi-file-text', bg: '#dbeafe', color: '#2563eb', filter: '' },
+              { label: 'Paid', value: statusStats.paid, icon: 'bi-check-circle', bg: '#d1fae5', color: '#059669', filter: 'paid' },
+            ].map((s, i) => (
+              <div key={i} className="card border-0 shadow-sm flex-fill" style={{ borderRadius: 12, cursor: 'pointer' }} onClick={() => setFilterPaid(s.filter)}>
+                <div className="card-body p-3">
+                  <div className="d-flex align-items-center gap-2 mb-2">
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: s.bg, color: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}><i className={`bi ${s.icon}`}></i></div>
+                    <span style={{ fontSize: 13, color: '#6b7280', fontWeight: 500 }}>{s.label}</span>
+                  </div>
+                  <div style={{ fontSize: 32, fontWeight: 700, lineHeight: 1, color: s.color }}>{s.value.toLocaleString()}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 12 }}>
+            {[
+              { label: 'Unpaid', value: statusStats.unpaid, icon: 'bi-exclamation-circle', bg: '#fee2e2', color: '#dc2626', filter: 'unpaid' },
+              { label: 'Total Amount', value: fmtMoney(statusStats.totalComm), icon: 'bi-currency-dollar', bg: '#fef3c7', color: '#d97706', filter: '' },
+            ].map((s, i) => (
+              <div key={i} className="card border-0 shadow-sm flex-fill" style={{ borderRadius: 12, cursor: 'pointer' }} onClick={() => setFilterPaid(s.filter)}>
+                <div className="card-body p-3">
+                  <div className="d-flex align-items-center gap-2 mb-2">
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: s.bg, color: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}><i className={`bi ${s.icon}`}></i></div>
+                    <span style={{ fontSize: 13, color: '#6b7280', fontWeight: 500 }}>{s.label}</span>
+                  </div>
+                  <div style={{ fontSize: i === 1 ? 22 : 32, fontWeight: 700, lineHeight: 1, color: s.color }}>{s.value}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Middle: Analytics Overview chart */}
+        <div className="card border-0 shadow-sm" style={{ flex: '2.5 1 380px', borderRadius: 12 }}>
+          <div className="card-body p-3">
+            <div className="d-flex justify-content-between align-items-center mb-2">
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>Analytics Overview</span>
+              <div className="d-flex gap-1">
+                {[{k:'bar',i:'bi-bar-chart'},{k:'pie',i:'bi-pie-chart'},{k:'donut',i:'bi-circle'}].map(b => (
+                  <button key={b.k} onClick={() => setChartType(b.k)} style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid #e5e7eb', background: chartType === b.k ? '#6366f1' : '#fff', color: chartType === b.k ? '#fff' : '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, transition: 'all .2s' }}>
+                    <i className={`bi ${b.i}`}></i>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ height: 260, position: 'relative' }}><canvas ref={analyticsChartRef}></canvas></div>
+          </div>
+        </div>
+
+        {/* Right: Top Reps compact list */}
+        {topReps.length > 0 && (
+          <div className="card border-0 shadow-sm" style={{ flex: '1 1 240px', borderRadius: 12, maxHeight: 340, overflowY: 'auto' }}>
+            <div className="card-body p-3">
+              <div className="d-flex align-items-center gap-2 mb-3" style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>
+                <i className="bi bi-trophy-fill" style={{ color: '#f59e0b' }}></i> Top Reps by Commission
+              </div>
+              <ul className="list-unstyled mb-0">
+                {topReps.map((r, i) => (
+                  <li key={r.rep_id} className="d-flex align-items-center gap-2 py-2" style={{ borderBottom: i < topReps.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: rankColors[i] || '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0 }}>{r.rank}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.rep_name}>{r.rep_name}</div>
+                      <div style={{ fontSize: 11, color: '#9ca3af' }}>{r.total_orders.toLocaleString()} invoices</div>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#059669', whiteSpace: 'nowrap' }}>{fmtMoney(r.total_commission)}</div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Search & Filter Badge */}
       <div className="card border-0 shadow-sm rounded-4 mb-3">
@@ -898,12 +1058,20 @@ export default function CommissionList() {
                           <div className="col-md-4">
                             <label className="form-label fw-semibold">Check Image</label>
                             <div style={{ border: '2px dashed #b0bec5', borderRadius: 8, padding: '12px 10px', textAlign: 'center', cursor: 'pointer', background: '#fafbfc' }}
-                              onClick={() => document.getElementById('checkImgPay')?.click()}>
-                              <div style={{ fontSize: 24, color: '#90a4ae' }}><i className="bi bi-image"></i></div>
-                              <div style={{ fontSize: 12, color: '#546e7a' }}>Drag & drop check image</div>
-                              <div style={{ fontSize: 11, color: '#90a4ae' }}>or <span style={{ color: '#4CB755', fontWeight: 'bold' }}>browse</span></div>
+                              onClick={() => document.getElementById('checkImgPay')?.click()}
+                              onDragOver={e => e.preventDefault()}
+                              onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) { setCheckImgFile(f); setCheckImgPreview(URL.createObjectURL(f)) } }}>
+                              {checkImgPreview
+                                ? <img src={checkImgPreview} alt="check" style={{ maxHeight: 80, maxWidth: '100%', borderRadius: 4 }} />
+                                : <>
+                                    <div style={{ fontSize: 24, color: '#90a4ae' }}><i className="bi bi-image"></i></div>
+                                    <div style={{ fontSize: 12, color: '#546e7a' }}>Drag & drop check image</div>
+                                    <div style={{ fontSize: 11, color: '#90a4ae' }}>or <span style={{ color: '#4CB755', fontWeight: 'bold' }}>browse</span></div>
+                                  </>
+                              }
                             </div>
-                            <input type="file" id="checkImgPay" accept=".png,.jpg,.jpeg" style={{ display: 'none' }} />
+                            {checkImgFile && <div className="mt-1 d-flex align-items-center gap-2" style={{ fontSize: 12 }}><span className="text-success"><i className="bi bi-check-circle me-1"></i>{checkImgFile.name}</span><button type="button" className="btn btn-sm btn-link text-danger p-0" onClick={() => { setCheckImgFile(null); setCheckImgPreview(null) }}>Remove</button></div>}
+                            <input type="file" id="checkImgPay" accept=".png,.jpg,.jpeg" style={{ display: 'none' }} onChange={e => { const f = e.target.files[0]; if (f) { setCheckImgFile(f); setCheckImgPreview(URL.createObjectURL(f)) } }} />
                           </div>
                         </div>
                         {/* Row 6: Partial CommTotal + Round off */}
@@ -938,13 +1106,27 @@ export default function CommissionList() {
                       )
                     })}
 
-                    {/* Email */}
+                    {/* Email Notification */}
                     <div className="row g-3 mb-4">
-                      <div className="col-md-4 text-end">
-                        <label className="form-label fw-semibold">Email ID :</label>
-                      </div>
-                      <div className="col-md-5">
-                        <input type="text" className="form-control" placeholder="Enter Recipient Emails" />
+                      <div className="col-md-12">
+                        <label className="form-label fw-semibold">Email Notification</label>
+                        {contactEmails.length > 0 ? (
+                          <div className="d-flex flex-wrap gap-2">
+                            {contactEmails.map((e, i) => {
+                              const checked = selectedEmails.includes(e.email)
+                              return (
+                                <label key={i} className="d-flex align-items-center gap-1 px-2 py-1 rounded border" style={{ fontSize: 12, cursor: 'pointer', background: checked ? '#eff6ff' : '#f9fafb', borderColor: checked ? '#2563eb' : '#e2e8f0' }}>
+                                  <input type="checkbox" checked={checked} onChange={() => setSelectedEmails(prev => checked ? prev.filter(x => x !== e.email) : [...prev, e.email])} style={{ accentColor: '#2563eb' }} />
+                                  {e.name ? `${e.name} <${e.email}>` : e.email}
+                                </label>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <input type="text" className="form-control" placeholder="Enter recipient emails (comma-separated)"
+                            value={selectedEmails.join(', ')}
+                            onChange={e => setSelectedEmails(e.target.value.split(',').map(x => x.trim()).filter(Boolean))} />
+                        )}
                       </div>
                     </div>
 
@@ -954,6 +1136,72 @@ export default function CommissionList() {
                     </div>
                   </form>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </>)}
+
+      {/* Edit Payment Modal */}
+      {editPaymentData && (<>
+        <div className="modal-backdrop fade show" style={{ zIndex: 1060 }}></div>
+        <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1070, overflowY: 'auto' }}>
+          <div className="modal-dialog modal-lg" style={{ margin: '1rem auto' }}>
+            <div className="modal-content border-0 shadow">
+              <div className="modal-header text-white" style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)' }}>
+                <h5 className="modal-title fw-bold"><i className="bi bi-pencil-square me-2"></i>Edit Payment</h5>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setEditPaymentData(null)}></button>
+              </div>
+              <div className="modal-body">
+                <form onSubmit={handleSaveEditPayment}>
+                  <div className="row g-3 mb-3">
+                    <div className="col-md-4">
+                      <label className="form-label fw-semibold">Comm Paid Date</label>
+                      <input type="date" className="form-control" value={editPayForm.commission_paid_date} onChange={e => setEditPayForm({ ...editPayForm, commission_paid_date: e.target.value })} />
+                    </div>
+                    <div className="col-md-4">
+                      <label className="form-label fw-semibold">Received Amount <span className="text-danger">*</span></label>
+                      <input type="number" step="0.01" className="form-control" value={editPayForm.received_amount} onChange={e => setEditPayForm({ ...editPayForm, received_amount: e.target.value })} required />
+                    </div>
+                    <div className="col-md-4">
+                      <label className="form-label fw-semibold">Date Received</label>
+                      <input type="date" className="form-control" value={editPayForm.received_date} onChange={e => setEditPayForm({ ...editPayForm, received_date: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="row g-3 mb-3">
+                    <div className="col-md-4">
+                      <label className="form-label fw-semibold">Received Check or CC</label>
+                      <input type="text" className="form-control" value={editPayForm.paid_mode} onChange={e => setEditPayForm({ ...editPayForm, paid_mode: e.target.value })} placeholder="Check or CC last 4 digits" />
+                    </div>
+                    <div className="col-md-4">
+                      <label className="form-label fw-semibold">Partial CommTotal <span className="text-danger">*</span></label>
+                      <input type="number" step="0.01" className="form-control" value={editPayForm.partial_comm_total} onChange={e => setEditPayForm({ ...editPayForm, partial_comm_total: e.target.value })} required />
+                    </div>
+                    <div className="col-md-4 d-flex align-items-end">
+                      <button type="button" className="btn btn-success" onClick={() => setEditPayForm({ ...editPayForm, partial_comm_total: String(Math.round(parseFloat(editPayForm.partial_comm_total) || 0)) })}>Round off</button>
+                    </div>
+                  </div>
+                  {Object.entries(editPayRepAmounts).map(([repId, data]) => {
+                    const detail = (editPaymentData.comm.details || []).find(d => String(d.sales_rep_id) === repId)
+                    return (
+                      <div className="row g-3 mb-2 align-items-center" key={repId}>
+                        <div className="col-md-4 text-end">
+                          <div className="fw-semibold">{detail?.rep_name || `Rep #${repId}`} ({detail?.rep_code || ''})</div>
+                          <div style={{ fontSize: 12 }}>Total: {fmtMoney(data.org_amount || 0)}</div>
+                        </div>
+                        <div className="col-md-4">
+                          <input type="number" step="0.01" className="form-control" placeholder="Commission Amount"
+                            value={data.paid_amount}
+                            onChange={e => setEditPayRepAmounts(prev => ({ ...prev, [repId]: { ...prev[repId], paid_amount: e.target.value } }))} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <div className="d-flex gap-2 mt-3">
+                    <button type="submit" className="btn btn-warning px-4" disabled={editPaySaving}>{editPaySaving ? 'Saving…' : 'Update Payment'}</button>
+                    <button type="button" className="btn btn-outline-secondary px-4" onClick={() => setEditPaymentData(null)}>Cancel</button>
+                  </div>
+                </form>
               </div>
             </div>
           </div>
@@ -1012,7 +1260,13 @@ export default function CommissionList() {
                         <input className="form-check-input" type="checkbox" id="archiveChk" defaultChecked={inv.po_status === 2 || inv.po_status === '2'} />
                         <label className="form-check-label" htmlFor="archiveChk">Archive invoice</label>
                       </div>
-                      <button className="btn btn-sm btn-success" onClick={() => toast.success('Updated')}>Update</button>
+                      <button className="btn btn-sm btn-success" onClick={async () => {
+                        const chk = document.getElementById('archiveChk')
+                        try {
+                          await api.archiveCommissionInvoice(viewComm._id, chk?.checked || false)
+                          toast.success('Invoice archive status updated')
+                        } catch (err) { toast.error(err.message) }
+                      }}>Update</button>
                     </div>
 
                     {/* Commission Info - blue header */}
@@ -1057,7 +1311,7 @@ export default function CommissionList() {
 
                                 rows.push(
                                   <tr key={i}>
-                                    <td>{inv.invoice_number || '-'} <a href="#" className="text-primary" style={{ fontSize: 11 }} onClick={e => e.preventDefault()}>Edit</a></td>
+                                    <td>{inv.invoice_number || '-'} <a href="#" className="text-primary" style={{ fontSize: 11 }} onClick={e => { e.preventDefault(); openEditPayment(mp, viewComm) }}>Edit</a></td>
                                     <td>{fmtMoney(balanceDue)}</td>
                                     <td>{fmtMoney(received)}</td>
                                     <td>{mp.received_date ? fmtDate(mp.received_date) : (mp.commission_paid_date ? fmtDate(mp.commission_paid_date) : '-')}</td>

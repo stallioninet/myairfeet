@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import { Chart, registerables } from 'chart.js'
+Chart.register(...registerables)
 import { Link, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../lib/api'
@@ -84,6 +86,18 @@ export default function CustomerDetailView({ id: propId }) {
   const [invSort, setInvSort] = useState({ key: 'line', dir: 'asc' })
   const [invPage, setInvPage] = useState(0)
   const invPerPage = 10
+
+  // Dashboard state
+  const [dashData, setDashData] = useState(null)
+  const [dashLoading, setDashLoading] = useState(false)
+  const [dashPeriod, setDashPeriod] = useState('year')
+  const [dashCustomFrom, setDashCustomFrom] = useState('')
+  const [dashCustomTo, setDashCustomTo] = useState('')
+  const [showCustomRange, setShowCustomRange] = useState(false)
+  const barChartRef = useRef(null)
+  const donutChartRef = useRef(null)
+  const barChartInstance = useRef(null)
+  const donutChartInstance = useRef(null)
 
   function openNotesEditor() {
     setNotesHtml(cust.notes || '')
@@ -356,6 +370,68 @@ export default function CustomerDetailView({ id: propId }) {
     }
   }, [activeTab, id, invYear])
 
+  // Fetch dashboard data on mount and period changes
+  useEffect(() => {
+    setDashLoading(true)
+    api.getCustomerDashboard(id, dashPeriod, dashCustomFrom, dashCustomTo).then(data => {
+      setDashData(data)
+      setDashLoading(false)
+    }).catch(err => {
+      console.error('Dashboard load error:', err.message)
+      setDashLoading(false)
+    })
+  }, [id, dashPeriod, dashCustomFrom, dashCustomTo])
+
+  // Build/rebuild charts when dashData changes
+  useEffect(() => {
+    if (!dashData) return
+    const monthly = dashData.monthly || []
+
+    if (barChartRef.current) {
+      if (barChartInstance.current) { barChartInstance.current.destroy(); barChartInstance.current = null }
+      barChartInstance.current = new Chart(barChartRef.current, {
+        type: 'bar',
+        data: {
+          labels: monthly.map(m => m.label),
+          datasets: [{ label: 'Sales ($)', data: monthly.map(m => m.sales), backgroundColor: 'rgba(37,99,235,0.7)', borderRadius: 4 }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { ticks: { callback: v => '$' + v.toLocaleString() }, grid: { color: '#f1f5f9' } },
+            x: { grid: { display: false } },
+          },
+        },
+      })
+    }
+
+    const breakdown = dashData.payment_breakdown || []
+    if (donutChartRef.current && breakdown.length > 0) {
+      if (donutChartInstance.current) { donutChartInstance.current.destroy(); donutChartInstance.current = null }
+      const colorMap = { Paid: '#16a34a', Partial: '#f59e0b', Overdue: '#dc2626', Pending: '#64748b' }
+      donutChartInstance.current = new Chart(donutChartRef.current, {
+        type: 'doughnut',
+        data: {
+          labels: breakdown.map(b => b.status),
+          datasets: [{ data: breakdown.map(b => b.count), backgroundColor: breakdown.map(b => colorMap[b.status] || '#94a3b8'), borderWidth: 2 }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+          cutout: '65%',
+        },
+      })
+    }
+
+    return () => {
+      if (barChartInstance.current) { barChartInstance.current.destroy(); barChartInstance.current = null }
+      if (donutChartInstance.current) { donutChartInstance.current.destroy(); donutChartInstance.current = null }
+    }
+  }, [dashData])
+
   // ── Commission Popup functions ──
   const [commCalcMode, setCommCalcMode] = useState('default')
   const [commItems, setCommItems] = useState([])
@@ -624,27 +700,131 @@ export default function CustomerDetailView({ id: propId }) {
         </div>
       </div>
 
-      {/* Summary Stats */}
-      <div className="row g-2 g-md-3 mb-2">
-        {[
-          { value: '0', label: 'Total Invoices', icon: 'bi-receipt', bg: '#eff6ff', color: '#2563eb' },
-          { value: '$0.00', label: 'Revenue', icon: 'bi-cash-stack', bg: '#ecfdf5', color: '#10b981' },
-          { value: '$0.00', label: 'Outstanding', icon: 'bi-exclamation-triangle', bg: '#fef2f2', color: '#ef4444' },
-          { value: '$0.00', label: 'Commissions', icon: 'bi-percent', bg: '#fffbeb', color: '#d97706' },
-          { value: '$0.00', label: 'Payments', icon: 'bi-credit-card', bg: '#f5f3ff', color: '#7c3aed' },
-        ].map((stat, i) => (
-          <div className="col-6 col-md" key={i}>
-            <div className="stat-card">
-              <div className="d-flex align-items-center gap-2">
-                <div className="stat-icon" style={{ background: stat.bg, color: stat.color }}><i className={`bi ${stat.icon}`}></i></div>
-                <div style={{ minWidth: 0 }}>
-                  <div className="stat-value text-truncate" style={{ color: stat.color }}>{stat.value}</div>
-                  <div className="stat-label text-truncate">{stat.label}</div>
-                </div>
+      {/* Customer Dashboard */}
+      <div className="card border-0 shadow-sm mb-2" style={{ borderRadius: 'clamp(10px, 2vw, 14px)', overflow: 'hidden' }}>
+        <div className="card-body p-2 p-md-3">
+
+          {/* Period Selection */}
+          <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
+            <span className="text-muted fw-semibold" style={{ fontSize: '.75rem' }}>Period:</span>
+            <div className="d-flex gap-1 flex-wrap">
+              {[
+                { key: 'month', label: 'This Month' },
+                { key: 'quarter', label: 'Last 3 Months' },
+                { key: 'year', label: 'This Year' },
+                { key: 'last_year', label: 'Last 12 Months' },
+                { key: 'all', label: 'All Time' },
+                { key: 'custom', label: 'Custom' },
+              ].map(p => (
+                <button key={p.key} className="btn btn-sm py-0 px-2" style={{ fontSize: '.72rem', fontWeight: 600, borderRadius: 6, background: dashPeriod === p.key ? '#2563eb' : '#f1f5f9', color: dashPeriod === p.key ? '#fff' : '#475569', border: 'none' }}
+                  onClick={() => { setDashPeriod(p.key); setShowCustomRange(p.key === 'custom') }}>
+                  {p.key === 'custom' && <i className="bi bi-calendar3 me-1" style={{ fontSize: '.7rem' }}></i>}{p.label}
+                </button>
+              ))}
+            </div>
+            {showCustomRange && (
+              <div className="d-flex align-items-center gap-1 flex-wrap">
+                <input type="date" className="form-control form-control-sm" style={{ width: 130, fontSize: '.75rem' }} value={dashCustomFrom} onChange={e => setDashCustomFrom(e.target.value)} />
+                <span className="text-muted" style={{ fontSize: '.72rem' }}>to</span>
+                <input type="date" className="form-control form-control-sm" style={{ width: 130, fontSize: '.75rem' }} value={dashCustomTo} onChange={e => setDashCustomTo(e.target.value)} />
+              </div>
+            )}
+            {dashLoading && <div className="spinner-border spinner-border-sm text-primary" style={{ width: 14, height: 14, borderWidth: 2 }}></div>}
+          </div>
+
+          {/* Summary Stats */}
+          {(() => {
+            const s = dashData?.stats || {}
+            const fmt = v => '$' + (parseFloat(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            return (
+              <div className="row g-2 mb-3">
+                {[
+                  { value: String(s.totalInvoices || 0), label: 'Total Invoices', icon: 'bi-receipt', bg: '#eff6ff', color: '#2563eb' },
+                  { value: fmt(s.totalRevenue), label: 'Revenue', icon: 'bi-cash-stack', bg: '#ecfdf5', color: '#10b981' },
+                  { value: fmt(s.totalOutstanding), label: 'Outstanding', icon: 'bi-exclamation-triangle', bg: '#fef2f2', color: '#ef4444' },
+                  { value: fmt(s.totalCommissions), label: 'Commissions', icon: 'bi-percent', bg: '#fffbeb', color: '#d97706' },
+                  { value: fmt(s.totalPayments), label: 'Payments', icon: 'bi-credit-card', bg: '#f5f3ff', color: '#7c3aed' },
+                ].map((stat, i) => (
+                  <div className="col-6 col-md" key={i}>
+                    <div className="stat-card">
+                      <div className="d-flex align-items-center gap-2">
+                        <div className="stat-icon" style={{ background: stat.bg, color: stat.color }}><i className={`bi ${stat.icon}`}></i></div>
+                        <div style={{ minWidth: 0 }}>
+                          <div className="stat-value text-truncate" style={{ color: stat.color }}>{stat.value}</div>
+                          <div className="stat-label text-truncate">{stat.label}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+
+          {/* Charts Row */}
+          <div className="row g-3 mb-3">
+            <div className="col-md-8">
+              <div className="fw-semibold mb-2" style={{ fontSize: '.8rem', color: '#334155' }}>Monthly Sales Trend</div>
+              <div style={{ height: 220, position: 'relative' }}>
+                {(dashData?.monthly || []).length === 0 && !dashLoading
+                  ? <div className="text-center text-muted py-5" style={{ fontSize: '.8rem' }}>No sales data</div>
+                  : <canvas ref={barChartRef}></canvas>
+                }
+              </div>
+            </div>
+            <div className="col-md-4">
+              <div className="fw-semibold mb-2" style={{ fontSize: '.8rem', color: '#334155' }}>Payment Status</div>
+              <div style={{ height: 220, position: 'relative' }}>
+                {(dashData?.payment_breakdown || []).length === 0 && !dashLoading
+                  ? <div className="text-center text-muted py-5" style={{ fontSize: '.8rem' }}>No data</div>
+                  : <canvas ref={donutChartRef}></canvas>
+                }
               </div>
             </div>
           </div>
-        ))}
+
+          {/* Outstanding Invoices Table */}
+          {(dashData?.outstanding || []).length > 0 && (
+            <div>
+              <div className="fw-semibold mb-2" style={{ fontSize: '.8rem', color: '#334155' }}>Outstanding Invoices</div>
+              <div className="table-responsive" style={{ borderRadius: 8, border: '1px solid #e8ecf1', overflow: 'hidden' }}>
+                <table className="table table-sm mb-0" style={{ fontSize: '.78rem' }}>
+                  <thead style={{ background: '#f8fafc' }}>
+                    <tr>
+                      <th className="px-3 py-2 fw-semibold" style={{ color: '#475569', borderBottom: '1px solid #e8ecf1' }}>Invoice #</th>
+                      <th className="px-3 py-2 fw-semibold" style={{ color: '#475569', borderBottom: '1px solid #e8ecf1' }}>PO #</th>
+                      <th className="px-3 py-2 fw-semibold" style={{ color: '#475569', borderBottom: '1px solid #e8ecf1' }}>Date</th>
+                      <th className="px-3 py-2 fw-semibold text-end" style={{ color: '#475569', borderBottom: '1px solid #e8ecf1' }}>Amount</th>
+                      <th className="px-3 py-2 fw-semibold text-end" style={{ color: '#475569', borderBottom: '1px solid #e8ecf1' }}>Paid</th>
+                      <th className="px-3 py-2 fw-semibold text-end" style={{ color: '#475569', borderBottom: '1px solid #e8ecf1' }}>Balance Due</th>
+                      <th className="px-3 py-2 fw-semibold" style={{ color: '#475569', borderBottom: '1px solid #e8ecf1' }}>Due Date</th>
+                      <th className="px-3 py-2 fw-semibold" style={{ color: '#475569', borderBottom: '1px solid #e8ecf1' }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(dashData.outstanding || []).map((inv, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td className="px-3 py-2">{inv.invoice_number || '—'}</td>
+                        <td className="px-3 py-2">{inv.po_number || '—'}</td>
+                        <td className="px-3 py-2">{inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
+                        <td className="px-3 py-2 text-end">${(parseFloat(inv.net_amount) || 0).toFixed(2)}</td>
+                        <td className="px-3 py-2 text-end">${(parseFloat(inv.paid_amount) || 0).toFixed(2)}</td>
+                        <td className="px-3 py-2 text-end fw-semibold" style={{ color: '#dc2626' }}>${(parseFloat(inv.balance) || 0).toFixed(2)}</td>
+                        <td className="px-3 py-2">{inv.due_date ? new Date(inv.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
+                        <td className="px-3 py-2">
+                          <span className="badge rounded-pill" style={{ fontSize: '.68rem', background: inv.is_overdue ? '#fee2e2' : '#fef9c3', color: inv.is_overdue ? '#991b1b' : '#854d0e' }}>
+                            {inv.is_overdue ? 'Overdue' : 'Pending'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+        </div>
       </div>
 
       {/* Tab Navigation */}

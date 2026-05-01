@@ -1,10 +1,11 @@
+import 'dotenv/config'
 import mongoose from 'mongoose'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const MONGO_URI = 'mongodb+srv://523:AAJfuYEce0N5elui@cluster0.dg7goyw.mongodb.net/?appName=Cluster0'
+const MONGO_URI = process.env.MONGO_URI
 const SQL_FILE = 'E:/projcet/523/myairfee_8qvsun15.sql'
 
 // Parse INSERT statements from SQL
@@ -46,7 +47,7 @@ async function migrate() {
   const sql = fs.readFileSync(SQL_FILE, 'utf-8')
 
   console.log('Connecting to MongoDB...')
-  await mongoose.connect(MONGO_URI, { dbName: '523' })
+  await mongoose.connect(MONGO_URI, { dbName: 'app' })
   const db = mongoose.connection.db
 
   // 1. Parse item_type

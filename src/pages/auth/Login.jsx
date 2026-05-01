@@ -2,18 +2,19 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../../lib/api'
+import { ASSETS } from '../../lib/config'
 
-// Quick-fill shortcuts with real credentials from the database
-const roleDefaults = {
-  admin:        { email: 'admin@stallioni.com',       password: 'superuser' },
-  'sales-rep':  { email: 'tami.airfeet@gmail.com',    password: 'superuser' },
-  'data-entry': { email: 'gomathi@stallioni.com',      password: 'abc123'   },
+// Quick-select pre-fills email only — user must enter their own password
+const roleEmails = {
+  admin:        'admin@stallioni.com',
+  'sales-rep':  'tami.airfeet@gmail.com',
+  'data-entry': 'gomathi@stallioni.com',
 }
 
 export default function Login({ onLogin }) {
   const navigate = useNavigate()
-  const [email, setEmail]       = useState(roleDefaults.admin.email)
-  const [password, setPassword] = useState(roleDefaults.admin.password)
+  const [email, setEmail]       = useState(roleEmails.admin)
+  const [password, setPassword] = useState('')
   const [showPwd, setShowPwd]   = useState(false)
   const [role, setRole]         = useState('admin')
   const [remember, setRemember] = useState(true)
@@ -21,9 +22,8 @@ export default function Login({ onLogin }) {
 
   function handleRoleChange(newRole) {
     setRole(newRole)
-    const def = roleDefaults[newRole] || roleDefaults.admin
-    setEmail(def.email)
-    setPassword(def.password)
+    setEmail(roleEmails[newRole] || roleEmails.admin)
+    setPassword('')
   }
 
   async function handleSubmit(e) {
@@ -49,7 +49,7 @@ export default function Login({ onLogin }) {
       <div className="auth-card">
         <div className="auth-logo">
           <div className="mb-3 p-3 rounded-3" style={{ background: '#0f172a', display: 'inline-block' }}>
-            <img src="https://staging.stallioni.com/assets/images/logo_fleet.png" alt="Commission Tracker" style={{ maxWidth: 200, height: 'auto' }} />
+            <img src={ASSETS.logoFleet} alt="Commission Tracker" style={{ maxWidth: 200, height: 'auto' }} />
           </div>
           <h2>Commission Tracker</h2>
           <p>Sign in to your account</p>

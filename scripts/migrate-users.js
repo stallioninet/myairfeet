@@ -8,7 +8,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: join(__dirname, '..', '.env') })
 
 const MONGO_URI = process.env.MONGO_URI
-const SQL_FILE = 'E:/xmapp/htdocs/523prototype/myairfee_8qvsun15.sql'
+const SQL_FILE = 'E:/xmapp/htdocs/523app/co523.sql'
 
 function parseInserts(sql, tableName) {
   const rows = []
@@ -76,7 +76,7 @@ function mapStatus(val) {
 }
 
 async function main() {
-  await mongoose.connect(MONGO_URI, { dbName: '523' })
+  await mongoose.connect(MONGO_URI, { dbName: 'app' })
   console.log('Connected to MongoDB')
 
   const sql = fs.readFileSync(SQL_FILE, 'utf-8')

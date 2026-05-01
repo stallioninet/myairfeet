@@ -46,7 +46,7 @@ async function connectDB() {
   }
   try {
     cachedConn = await mongoose.connect(MONGO_URI, {
-      dbName: '523',
+      dbName: 'app',
       serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000,
     })

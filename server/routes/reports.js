@@ -196,12 +196,88 @@ router.get('/sales-rep-year', async (req, res) => {
   }
 })
 
+// GET Paid Invoice aggregated summary (yearly/monthly breakdown + top customers)
+router.get('/paid-summary', async (req, res) => {
+  try {
+    const match = { paid_value: 'PAID' }
+    if (req.query.company_id) match.company_id = parseInt(req.query.company_id)
+    const dateField = 'invoice_date'
+    if (req.query.from || req.query.to) {
+      match[dateField] = {}
+      if (req.query.from) match[dateField].$gte = new Date(req.query.from)
+      if (req.query.to) match[dateField].$lte = new Date(req.query.to + 'T23:59:59')
+    }
+
+    const invoices = await invoiceCol().find(match).toArray()
+
+    // Aggregate stats
+    let totalPaid = 0, totalQty = 0
+    invoices.forEach(inv => { totalPaid += parseFloat(inv.net_amount) || 0; totalQty += inv.total_qty || 0 })
+    const stats = { total_paid: totalPaid, total_invoices: invoices.length, total_qty: totalQty }
+
+    // Yearly breakdown
+    const yearMap = {}
+    invoices.forEach(inv => {
+      const d = inv.invoice_date ? new Date(inv.invoice_date) : null
+      if (!d || isNaN(d)) return
+      const y = d.getFullYear()
+      if (!yearMap[y]) yearMap[y] = { year: y, total_paid: 0, total_qty: 0, total_invoices: 0 }
+      yearMap[y].total_paid += parseFloat(inv.net_amount) || 0
+      yearMap[y].total_qty += inv.total_qty || 0
+      yearMap[y].total_invoices++
+    })
+    const yearly = Object.values(yearMap).sort((a, b) => a.year - b.year)
+
+    // Monthly breakdown
+    const monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    const monthMap = {}
+    invoices.forEach(inv => {
+      const d = inv.invoice_date ? new Date(inv.invoice_date) : null
+      if (!d || isNaN(d)) return
+      const y = d.getFullYear(), m = d.getMonth() + 1
+      const key = `${y}-${String(m).padStart(2, '0')}`
+      if (!monthMap[key]) monthMap[key] = { year: y, month: m, month_name: monthNames[m], sort_key: key, total_paid: 0, total_qty: 0, total_invoices: 0 }
+      monthMap[key].total_paid += parseFloat(inv.net_amount) || 0
+      monthMap[key].total_qty += inv.total_qty || 0
+      monthMap[key].total_invoices++
+    })
+    const monthly = Object.values(monthMap).sort((a, b) => a.sort_key.localeCompare(b.sort_key))
+
+    // Top 10 customers
+    const custTotals = {}
+    invoices.forEach(inv => {
+      const cid = inv.company_id
+      if (!cid) return
+      if (!custTotals[cid]) custTotals[cid] = { company_id: cid, total_paid: 0, total_invoices: 0 }
+      custTotals[cid].total_paid += parseFloat(inv.net_amount) || 0
+      custTotals[cid].total_invoices++
+    })
+    const topIds = Object.values(custTotals).sort((a, b) => b.total_paid - a.total_paid).slice(0, 10).map(c => c.company_id)
+    const topCustomers_raw = await custCol().find({ legacy_id: { $in: topIds } }).project({ legacy_id: 1, company_name: 1, customer_code: 1 }).toArray()
+    const custNameMap = {}
+    topCustomers_raw.forEach(c => { custNameMap[c.legacy_id] = c })
+    const top_customers = topIds.map((cid, i) => ({
+      rank: i + 1,
+      company_id: cid,
+      company_name: custNameMap[cid]?.company_name || `Customer #${cid}`,
+      company_cust_code: custNameMap[cid]?.customer_code || '',
+      total_paid: custTotals[cid].total_paid,
+      total_invoices: custTotals[cid].total_invoices,
+    }))
+
+    res.json({ stats, yearly, monthly, top_customers })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // GET Paid Invoice report
 router.get('/paid-invoices', async (req, res) => {
   try {
     const match = { paid_value: 'PAID' }
-    if (req.query.from) match.po_date = { ...match.po_date, $gte: new Date(req.query.from) }
-    if (req.query.to) match.po_date = { ...(match.po_date || {}), $lte: new Date(req.query.to + 'T23:59:59') }
+    if (req.query.company_id) match.company_id = parseInt(req.query.company_id)
+    if (req.query.from) match.invoice_date = { ...match.invoice_date, $gte: new Date(req.query.from) }
+    if (req.query.to) match.invoice_date = { ...(match.invoice_date || {}), $lte: new Date(req.query.to + 'T23:59:59') }
 
     const invoices = await invoiceCol().find(match).sort({ legacy_id: -1 }).toArray()
 

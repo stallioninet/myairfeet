@@ -7,7 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: join(__dirname, '..', '.env') })
 
 async function main() {
-  await mongoose.connect(process.env.MONGO_URI, { dbName: '523' })
+  await mongoose.connect(process.env.MONGO_URI, { dbName: 'app' })
   const col = mongoose.connection.db.collection('userlevels')
 
   const keyMap = {

@@ -43,9 +43,9 @@ const MONGO_URI = process.env.MONGO_URI
 
 import { startBackupScheduler } from './lib/backupScheduler.js'
 
-mongoose.connect(MONGO_URI, { dbName: '523' })
+mongoose.connect(MONGO_URI, { dbName: 'app' })
   .then(() => {
-    console.log('MongoDB connected to database: 523')
+    console.log('MongoDB connected to database: app')
     startBackupScheduler()
   })
   .catch(err => console.error('MongoDB connection error:', err))

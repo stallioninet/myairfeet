@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { api } from '../../lib/api'
 import Pagination from '../../components/Pagination'
 import exportCSV from '../../lib/exportCSV'
+import { COMPANY } from '../../lib/config'
 
 function num(n) {
   return Number(n || 0).toFixed(2)
@@ -1780,7 +1781,7 @@ export default function EventList() {
                   <div className="mb-3">
                     <label className="form-label fw-semibold">Message <span className="text-danger">*</span></label>
                     <textarea className="form-control" rows="5" required
-                      value={eventEmailForm.message || `Please find attached the event details for ${detailData.name}.\n\nBest regards,\nAirfeet LLC`}
+                      value={eventEmailForm.message || `Please find attached the event details for ${detailData.name}.\n\nBest regards,\n${COMPANY.name}`}
                       onChange={e => setEventEmailForm({ ...eventEmailForm, message: e.target.value })}></textarea>
                   </div>
                   <div className="mb-3">

@@ -1,8 +1,14 @@
 import mongoose from 'mongoose'
 import fs from 'fs'
+import dotenv from 'dotenv'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
 
-const MONGO_URI = 'mongodb+srv://523:AAJfuYEce0N5elui@cluster0.dg7goyw.mongodb.net/?appName=Cluster0'
-const SQL_FILE = 'E:/projcet/523/myairfee_8qvsun15.sql'
+const __dirname = dirname(fileURLToPath(import.meta.url))
+dotenv.config({ path: join(__dirname, '..', '.env') })
+
+const MONGO_URI = process.env.MONGO_URI
+const SQL_FILE = 'E:/xmapp/htdocs/523app/co523.sql'
 
 // Parse all INSERT statements for a given table
 function parseInserts(sql, tableName) {
@@ -79,7 +85,7 @@ async function migrate() {
   const sql = fs.readFileSync(SQL_FILE, 'utf-8')
 
   console.log('Connecting to MongoDB (database: 523)...')
-  await mongoose.connect(MONGO_URI, { dbName: '523' })
+  await mongoose.connect(MONGO_URI, { dbName: 'app' })
   const db = mongoose.connection.db
 
   // ID mapping tables
@@ -99,7 +105,7 @@ async function migrate() {
   const privs = parseInserts(sql, 'access_privileges')
   console.log(`\naccess_privileges: ${privs.length} rows`)
   if (privs.length > 0) {
-    await db.collection('privileges').deleteMany({})
+    await db.collection('privileges').drop().catch(() => {})
     const docs = privs.map(p => ({
       name: p.access_privileges_name,
       key: p.access_privileges_key,
@@ -116,7 +122,7 @@ async function migrate() {
   const levels = parseInserts(sql, 'user_levels')
   console.log(`\nuser_levels: ${levels.length} rows`)
   if (levels.length > 0) {
-    await db.collection('userlevels').deleteMany({})
+    await db.collection('userlevels').drop().catch(() => {})
     const docs = levels.map(l => ({
       name: l.user_level_name || l.level_name || '',
       level: parseInt(l.user_level) || 0,
@@ -133,7 +139,7 @@ async function migrate() {
   const users = parseInserts(sql, 'user_master')
   console.log(`\nuser_master: ${users.length} rows`)
   if (users.length > 0) {
-    await db.collection('app_users').deleteMany({})
+    await db.collection('app_users').drop().catch(() => {})
     const docs = users.map(u => {
       const doc = {
         first_name: u.first_name || '',
@@ -167,7 +173,7 @@ async function migrate() {
   const itemTypes = parseInserts(sql, 'item_type')
   console.log(`\nitem_type: ${itemTypes.length} rows`)
   if (itemTypes.length > 0) {
-    await db.collection('itemtypes').deleteMany({})
+    await db.collection('itemtypes').drop().catch(() => {})
     const docs = itemTypes.map(t => ({
       name: t.item_type_name,
       description: '',
@@ -191,7 +197,7 @@ async function migrate() {
   const products = parseInserts(sql, 'product_item')
   console.log(`\nproduct_item: ${products.length} rows`)
   if (products.length > 0) {
-    await db.collection('productitems').deleteMany({})
+    await db.collection('productitems').drop().catch(() => {})
     const docs = products.map(p => ({
       name: p.item_name,
       item_type: typeIdMap[parseInt(p.id_item_type)] || null,
@@ -216,7 +222,7 @@ async function migrate() {
   const sizes = parseInserts(sql, 'item_size')
   console.log(`\nitem_size: ${sizes.length} rows`)
   if (sizes.length > 0) {
-    await db.collection('productsizes').deleteMany({})
+    await db.collection('productsizes').drop().catch(() => {})
     const docs = sizes.map((s, i) => ({
       name: s.size_name,
       code: s.size_code,
@@ -238,7 +244,7 @@ async function migrate() {
   const itemMaps = parseInserts(sql, 'item_map')
   console.log(`\nitem_map: ${itemMaps.length} rows`)
   if (itemMaps.length > 0) {
-    await db.collection('itemsizemaps').deleteMany({})
+    await db.collection('itemsizemaps').drop().catch(() => {})
     const docs = itemMaps.filter(m => productIdMap[parseInt(m.item_id)] && sizeIdMap[parseInt(m.item_size_id)])
       .map(m => ({
         product_item: productIdMap[parseInt(m.item_id)],
@@ -259,7 +265,7 @@ async function migrate() {
   const groups = parseInserts(sql, 'group_productitems')
   console.log(`\ngroup_productitems: ${groups.length} rows`)
   if (groups.length > 0) {
-    await db.collection('productgroups').deleteMany({})
+    await db.collection('productgroups').drop().catch(() => {})
     const docs = groups.map(g => {
       const prodIds = (g.item || '').split(',').map(id => productIdMap[parseInt(id)]).filter(Boolean)
       return {
@@ -280,7 +286,7 @@ async function migrate() {
   const companies = parseInserts(sql, 'company')
   console.log(`\ncompany: ${companies.length} rows`)
   if (companies.length > 0) {
-    await db.collection('customers').deleteMany({})
+    await db.collection('customers').drop().catch(() => {})
     const docs = companies.map(c => ({
       company_name: c.company_name || '',
       customer_type: c.customer_type || '',
@@ -314,7 +320,7 @@ async function migrate() {
   const compAddrs = parseInserts(sql, 'company_address')
   console.log(`\ncompany_address: ${compAddrs.length} rows`)
   if (compAddrs.length > 0) {
-    await db.collection('customer_addresses').deleteMany({})
+    await db.collection('customer_addresses').drop().catch(() => {})
     const docs = compAddrs.map(a => ({
       customer: companyIdMap[parseInt(a.id_company)] || null,
       label: a.address_label || 'Address',
@@ -335,7 +341,7 @@ async function migrate() {
   const compContacts = parseInserts(sql, 'company_contact')
   console.log(`\ncompany_contact: ${compContacts.length} rows`)
   if (compContacts.length > 0) {
-    await db.collection('customer_contacts').deleteMany({})
+    await db.collection('customer_contacts').drop().catch(() => {})
     const docs = compContacts.map(c => ({
       customer: companyIdMap[parseInt(c.id_company)] || null,
       name: c.contact_name || '',
@@ -355,7 +361,7 @@ async function migrate() {
   const compEmails = parseInserts(sql, 'company_emails')
   console.log(`\ncompany_emails: ${compEmails.length} rows`)
   if (compEmails.length > 0) {
-    await db.collection('customer_emails').deleteMany({})
+    await db.collection('customer_emails').drop().catch(() => {})
     const docs = compEmails.map(e => ({
       customer: companyIdMap[parseInt(e.id_company)] || null,
       email: e.email_address || e.company_email || '',
@@ -372,7 +378,7 @@ async function migrate() {
   const custRepMaps = parseInserts(sql, 'cust_sales_rep_map')
   console.log(`\ncust_sales_rep_map: ${custRepMaps.length} rows`)
   if (custRepMaps.length > 0) {
-    await db.collection('customer_rep_maps').deleteMany({})
+    await db.collection('customer_rep_maps').drop().catch(() => {})
     const docs = custRepMaps.map(m => ({
       customer: companyIdMap[parseInt(m.id_company)] || null,
       sales_rep_old_id: parseInt(m.id_user_master) || 0,
@@ -389,7 +395,7 @@ async function migrate() {
   const custTypes = parseInserts(sql, 'customer_type')
   console.log(`\ncustomer_type: ${custTypes.length} rows`)
   if (custTypes.length > 0) {
-    await db.collection('customer_types').deleteMany({})
+    await db.collection('customer_types').drop().catch(() => {})
     const docs = custTypes.map(t => ({
       name: t.customer_type_name || t.type_name || '',
       status: t.status === '1' ? 'active' : 'inactive',
@@ -404,7 +410,7 @@ async function migrate() {
   const orders = parseInserts(sql, 'purchase_order')
   console.log(`\npurchase_order: ${orders.length} rows`)
   if (orders.length > 0) {
-    await db.collection('purchase_orders').deleteMany({})
+    await db.collection('purchase_orders').drop().catch(() => {})
     const docs = orders.map(o => ({
       po_number: o.po_number || '',
       customer: companyIdMap[parseInt(o.id_company)] || null,
@@ -436,7 +442,7 @@ async function migrate() {
   const poItems = parseInserts(sql, 'po_item')
   console.log(`\npo_item: ${poItems.length} rows`)
   if (poItems.length > 0) {
-    await db.collection('po_items').deleteMany({})
+    await db.collection('po_items').drop().catch(() => {})
     const docs = poItems.map(p => ({
       purchase_order: poIdMap[parseInt(p.id_purchase_order)] || null,
       product_item: productIdMap[parseInt(p.id_product_item)] || null,
@@ -455,7 +461,7 @@ async function migrate() {
   const poItemSizes = parseInserts(sql, 'po_item_size')
   console.log(`\npo_item_size: ${poItemSizes.length} rows`)
   if (poItemSizes.length > 0) {
-    await db.collection('po_item_sizes').deleteMany({})
+    await db.collection('po_item_sizes').drop().catch(() => {})
     const docs = poItemSizes.map(p => ({
       purchase_order_old_id: parseInt(p.id_purchase_order) || 0,
       product_item: productIdMap[parseInt(p.id_product_item)] || null,
@@ -473,7 +479,7 @@ async function migrate() {
   const invoices = parseInserts(sql, 'invoice_commission')
   console.log(`\ninvoice_commission: ${invoices.length} rows`)
   if (invoices.length > 0) {
-    await db.collection('invoices').deleteMany({})
+    await db.collection('invoices').drop().catch(() => {})
     const docs = invoices.map(inv => ({
       invoice_number: inv.invoice_number || '',
       customer: companyIdMap[parseInt(inv.id_company)] || null,
@@ -503,7 +509,7 @@ async function migrate() {
   const invDetails = parseInserts(sql, 'invoice_commission_details')
   console.log(`\ninvoice_commission_details: ${invDetails.length} rows`)
   if (invDetails.length > 0) {
-    await db.collection('invoice_details').deleteMany({})
+    await db.collection('invoice_details').drop().catch(() => {})
     const docs = invDetails.map(d => ({
       invoice: invoiceIdMap[parseInt(d.id_invoice_commission)] || null,
       invoice_old_id: parseInt(d.id_invoice_commission) || 0,
@@ -525,7 +531,7 @@ async function migrate() {
   const invRepDetails = parseInserts(sql, 'invoice_commission_rep_details')
   console.log(`\ninvoice_commission_rep_details: ${invRepDetails.length} rows`)
   if (invRepDetails.length > 0) {
-    await db.collection('invoice_rep_details').deleteMany({})
+    await db.collection('invoice_rep_details').drop().catch(() => {})
     const docs = invRepDetails.map(d => ({
       invoice: invoiceIdMap[parseInt(d.id_invoice_commission)] || null,
       sales_rep_old_id: parseInt(d.id_user_master) || 0,
@@ -543,7 +549,7 @@ async function migrate() {
   const invPayments = parseInserts(sql, 'invoice_payment')
   console.log(`\ninvoice_payment: ${invPayments.length} rows`)
   if (invPayments.length > 0) {
-    await db.collection('invoice_payments').deleteMany({})
+    await db.collection('invoice_payments').drop().catch(() => {})
     const docs = invPayments.map(p => ({
       invoice: invoiceIdMap[parseInt(p.id_invoice_commission)] || null,
       amount: parseFloat(p.amount || p.payment_amount) || 0,
@@ -563,7 +569,7 @@ async function migrate() {
   const events = parseInserts(sql, 'events')
   console.log(`\nevents: ${events.length} rows`)
   if (events.length > 0) {
-    await db.collection('events').deleteMany({})
+    await db.collection('events').drop().catch(() => {})
     const docs = events.map(e => ({
       name: e.event_name || '',
       description: e.event_desc || '',
@@ -586,7 +592,7 @@ async function migrate() {
   const eventTypes = parseInserts(sql, 'event_types')
   console.log(`\nevent_types: ${eventTypes.length} rows`)
   if (eventTypes.length > 0) {
-    await db.collection('event_types').deleteMany({})
+    await db.collection('event_types').drop().catch(() => {})
     const docs = eventTypes.map(t => ({
       name: t.event_type_name || t.type_name || '',
       status: t.status === '1' ? 'active' : 'inactive',
@@ -601,7 +607,7 @@ async function migrate() {
   const suppliers = parseInserts(sql, 'suppliers')
   console.log(`\nsuppliers: ${suppliers.length} rows`)
   if (suppliers.length > 0) {
-    await db.collection('suppliers').deleteMany({})
+    await db.collection('suppliers').drop().catch(() => {})
     const docs = suppliers.map(s => ({
       name: s.supplier_name || '',
       contact: s.supplier_contact || '',
@@ -621,7 +627,7 @@ async function migrate() {
   const terms = parseInserts(sql, 'terms')
   console.log(`\nterms: ${terms.length} rows`)
   if (terms.length > 0) {
-    await db.collection('terms').deleteMany({})
+    await db.collection('terms').drop().catch(() => {})
     const docs = terms.map(t => ({
       name: t.terms_name || t.term_name || '',
       days: parseInt(t.terms_days || t.days) || 0,
@@ -637,7 +643,7 @@ async function migrate() {
   const taxRates = parseInserts(sql, 'sales_tax_rates')
   console.log(`\nsales_tax_rates: ${taxRates.length} rows`)
   if (taxRates.length > 0) {
-    await db.collection('tax_rates').deleteMany({})
+    await db.collection('tax_rates').drop().catch(() => {})
     const docs = taxRates.map(t => ({
       old_tax_id: t.sales_tax_id || '',
       name: t.sales_tax_item_name || '',
@@ -657,7 +663,7 @@ async function migrate() {
   const emailTpls = parseInserts(sql, 'email_templates')
   console.log(`\nemail_templates: ${emailTpls.length} rows`)
   if (emailTpls.length > 0) {
-    await db.collection('email_templates').deleteMany({})
+    await db.collection('email_templates').drop().catch(() => {})
     const docs = emailTpls.map(t => ({
       name: t.template_name || t.name || '',
       subject: t.subject || '',
@@ -674,7 +680,7 @@ async function migrate() {
   const poTotals = parseInserts(sql, 'po_item_total')
   console.log(`\npo_item_total: ${poTotals.length} rows`)
   if (poTotals.length > 0) {
-    await db.collection('po_item_totals').deleteMany({})
+    await db.collection('po_item_totals').drop().catch(() => {})
     await db.collection('po_item_totals').insertMany(poTotals.map(r => {
       const doc = {}
       Object.keys(r).forEach(k => {
@@ -692,7 +698,7 @@ async function migrate() {
   const invItemDetails = parseInserts(sql, 'invoice_commission_item_details')
   console.log(`\ninvoice_commission_item_details: ${invItemDetails.length} rows`)
   if (invItemDetails.length > 0) {
-    await db.collection('invoice_item_details').deleteMany({})
+    await db.collection('invoice_item_details').drop().catch(() => {})
     await db.collection('invoice_item_details').insertMany(invItemDetails)
     console.log(`  -> migrated ${invItemDetails.length} invoice item details`)
   }
@@ -703,7 +709,7 @@ async function migrate() {
   const costs = parseInserts(sql, 'cost_info')
   console.log(`\ncost_info: ${costs.length} rows`)
   if (costs.length > 0) {
-    await db.collection('cost_info').deleteMany({})
+    await db.collection('cost_info').drop().catch(() => {})
     const costDocs = costs.map(c => ({
       old_cost_id: c.cost_id || '',
       name: c.items || '',
@@ -722,7 +728,7 @@ async function migrate() {
   const addresses = parseInserts(sql, 'Address')
   console.log(`\nAddress: ${addresses.length} rows`)
   if (addresses.length > 0) {
-    await db.collection('address_settings').deleteMany({})
+    await db.collection('address_settings').drop().catch(() => {})
     await db.collection('address_settings').insertMany(addresses)
     console.log(`  -> migrated ${addresses.length} address records`)
   }
@@ -733,7 +739,7 @@ async function migrate() {
   const prodSizes = parseInserts(sql, 'product_size')
   console.log(`\nproduct_size: ${prodSizes.length} rows`)
   if (prodSizes.length > 0) {
-    await db.collection('product_sizes').deleteMany({})
+    await db.collection('product_sizes').drop().catch(() => {})
     const sizeDocs = prodSizes.map(s => ({
       old_size_id: s.size_id || '',
       name: s.size_name || '',
@@ -752,7 +758,7 @@ async function migrate() {
   const styles = parseInserts(sql, 'product_style')
   console.log(`\nproduct_style: ${styles.length} rows`)
   if (styles.length > 0) {
-    await db.collection('product_styles').deleteMany({})
+    await db.collection('product_styles').drop().catch(() => {})
     const styleDocs = styles.map(s => ({
       old_style_id: s.style_id || '',
       name: s.style_name || '',

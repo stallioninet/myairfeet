@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../../lib/api'
+import { COMPANY } from '../../lib/config'
 
 const DEFAULT_SUBJECT = 'AIRfeet Invoice Payment Due Reminder'
 const DEFAULT_CONTENT = `<p>Dear <strong>{client_name}</strong>,</p>
@@ -9,7 +10,7 @@ const DEFAULT_CONTENT = `<p>Dear <strong>{client_name}</strong>,</p>
 {returnvalimport}
 <p>It would be greatly appreciated if you could confirm receipt of this invoice and advise as to whether payment has been scheduled.</p>
 <p>I have attached a copy of the invoice for your reference. If you require any further information from our side, please let me know.</p>
-<p><strong>Best wishes,</strong><br/>Airfeet LLC<br/>Email: info@myairfeet.com<br/>Phone: 317-965-5212</p>`
+<p><strong>Best wishes,</strong><br/>${COMPANY.name}<br/>Email: ${COMPANY.email}<br/>Phone: ${COMPANY.phone}</p>`
 
 export default function OutstandEmails() {
   const [subject, setSubject] = useState(DEFAULT_SUBJECT)

@@ -531,6 +531,148 @@ router.get('/:id/history', async (req, res) => {
   }
 })
 
+// GET customer dashboard stats, charts, outstanding invoices
+router.get('/:id/dashboard', async (req, res) => {
+  try {
+    const db = mongoose.connection.db
+    const doc = await col().findOne({ _id: new mongoose.Types.ObjectId(req.params.id) })
+    if (!doc) return res.status(404).json({ error: 'Customer not found' })
+    const legacyId = doc.legacy_id
+    if (!legacyId) return res.json({ stats: { totalInvoices: 0, totalRevenue: 0, totalPaid: 0, totalOutstanding: 0, totalCommissions: 0, totalPayments: 0 }, monthly: [], payment_breakdown: [], outstanding: [] })
+
+    // Build date filter based on period
+    const period = req.query.period || 'year'
+    const now = new Date()
+    let invoiceDateFilter = null
+    if (period === 'month') {
+      invoiceDateFilter = { $gte: new Date(now.getFullYear(), now.getMonth(), 1) }
+    } else if (period === 'quarter') {
+      const d = new Date(); d.setMonth(d.getMonth() - 3)
+      invoiceDateFilter = { $gte: d }
+    } else if (period === 'year') {
+      invoiceDateFilter = { $gte: new Date(now.getFullYear(), 0, 1) }
+    } else if (period === 'last_year') {
+      const d = new Date(); d.setFullYear(d.getFullYear() - 1)
+      invoiceDateFilter = { $gte: d }
+    } else if (period === 'custom') {
+      const { date_from, date_to } = req.query
+      if (date_from && date_to) {
+        invoiceDateFilter = { $gte: new Date(date_from), $lte: new Date(date_to) }
+      }
+    }
+    // 'all' = no filter
+
+    const baseQuery = { company_id: legacyId, po_status: { $in: [1, '1'] } }
+    const periodicQuery = { ...baseQuery }
+    if (invoiceDateFilter) periodicQuery.invoice_date = invoiceDateFilter
+
+    const periodInvoices = await db.collection('invoices').find(periodicQuery).toArray()
+
+    // Compute summary stats
+    let totalInvoices = 0, totalRevenue = 0, totalPaid = 0, totalOutstanding = 0
+    periodInvoices.forEach(inv => {
+      const netAmt = parseFloat(inv.net_amount) || 0
+      const paidStr = (inv.paid_value || '').toString().trim().toUpperCase()
+      const paidAmt = paidStr === 'PAID' ? netAmt : (parseFloat(paidStr) || 0)
+      const balance = Math.max(0, netAmt - paidAmt)
+      totalInvoices++
+      totalRevenue += netAmt
+      totalPaid += paidAmt
+      totalOutstanding += balance
+    })
+
+    // Commissions and payments totals for the period
+    const poIds = periodInvoices.map(inv => inv.legacy_id).filter(Boolean)
+    let totalCommissions = 0, totalPayments = 0
+    if (poIds.length > 0) {
+      const commSummaries = await db.collection('invoice_commission_summary').find({ po_id: { $in: poIds } }).toArray()
+      commSummaries.forEach(s => {
+        const ss = s.save_status || 'default'
+        if (ss === 'percent') totalCommissions += parseFloat(s.total_commission_percentage) || 0
+        else if (ss === 'dollar') totalCommissions += parseFloat(s.total_commission_dollar) || 0
+        else totalCommissions += parseFloat(s.total_commission) || 0
+      })
+      const commIds = commSummaries.map(s => s.legacy_id).filter(Boolean)
+      if (commIds.length > 0) {
+        const pays = await db.collection('commission_payments').find({ inv_com_id: { $in: commIds } }).toArray()
+        pays.forEach(p => { totalPayments += parseFloat(p.received_amt) || 0 })
+      }
+    }
+
+    // Monthly sales trend — always last 12 months regardless of period
+    const twelveMonthsAgo = new Date(); twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1)
+    const trendInvoices = await db.collection('invoices').find({
+      ...baseQuery,
+      invoice_date: { $gte: twelveMonthsAgo }
+    }).project({ invoice_date: 1, net_amount: 1 }).toArray()
+
+    const monthMap = {}
+    trendInvoices.forEach(inv => {
+      if (!inv.invoice_date) return
+      const d = new Date(inv.invoice_date)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      const label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+      if (!monthMap[key]) monthMap[key] = { key, label, sales: 0, count: 0 }
+      monthMap[key].sales += parseFloat(inv.net_amount) || 0
+      monthMap[key].count++
+    })
+    const monthly = Object.values(monthMap).sort((a, b) => a.key.localeCompare(b.key))
+
+    // Payment status breakdown for donut chart
+    const today = new Date()
+    const breakdown = { Paid: 0, Partial: 0, Overdue: 0, Pending: 0 }
+    periodInvoices.forEach(inv => {
+      const netAmt = parseFloat(inv.net_amount) || 0
+      const paidStr = (inv.paid_value || '').toString().trim().toUpperCase()
+      const paidAmt = paidStr === 'PAID' ? netAmt : (parseFloat(paidStr) || 0)
+      const balance = netAmt - paidAmt
+      if (balance <= 0.01) breakdown.Paid++
+      else if (paidAmt > 0) breakdown.Partial++
+      else if (inv.due_date && new Date(inv.due_date) < today) breakdown.Overdue++
+      else breakdown.Pending++
+    })
+    const payment_breakdown = Object.entries(breakdown)
+      .filter(([, count]) => count > 0)
+      .map(([status, count]) => ({ status, count }))
+
+    // Outstanding invoices (balance > 0, up to 20, sorted by due date)
+    const outstanding = periodInvoices
+      .map(inv => {
+        const netAmt = parseFloat(inv.net_amount) || 0
+        const paidStr = (inv.paid_value || '').toString().trim().toUpperCase()
+        const paidAmt = paidStr === 'PAID' ? netAmt : (parseFloat(paidStr) || 0)
+        return { ...inv, _balance: netAmt - paidAmt, _paidAmt: paidAmt, _netAmt: netAmt }
+      })
+      .filter(inv => inv._balance > 0.01)
+      .sort((a, b) => {
+        const da = a.due_date ? new Date(a.due_date) : new Date('9999-01-01')
+        const db2 = b.due_date ? new Date(b.due_date) : new Date('9999-01-01')
+        return da - db2
+      })
+      .slice(0, 20)
+      .map(inv => ({
+        po_id: inv.legacy_id,
+        invoice_number: inv.invoice_number || '',
+        po_number: inv.po_number || '',
+        invoice_date: inv.invoice_date,
+        net_amount: inv._netAmt,
+        paid_amount: inv._paidAmt,
+        balance: inv._balance,
+        due_date: inv.due_date,
+        is_overdue: inv.due_date ? new Date(inv.due_date) < today : false,
+      }))
+
+    res.json({
+      stats: { totalInvoices, totalRevenue, totalPaid, totalOutstanding, totalCommissions, totalPayments },
+      monthly,
+      payment_breakdown,
+      outstanding,
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // GET single customer (with contacts, addresses, emails, assigned reps)
 router.get('/:id', async (req, res) => {
   try {

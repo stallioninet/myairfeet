@@ -2,7 +2,7 @@ import mongoose from 'mongoose'
 import dotenv from 'dotenv'
 dotenv.config()
 
-await mongoose.connect(process.env.MONGO_URI, { dbName: '523' })
+await mongoose.connect(process.env.MONGO_URI, { dbName: 'app' })
 const col = mongoose.connection.db.collection('app_user')
 
 const allUsers = await col.find({}).toArray()

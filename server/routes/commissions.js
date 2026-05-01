@@ -1,5 +1,30 @@
 import { Router } from 'express'
 import mongoose from 'mongoose'
+import multer from 'multer'
+import nodemailer from 'nodemailer'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
+import { existsSync, mkdirSync } from 'fs'
+
+const __dirname2 = dirname(fileURLToPath(import.meta.url))
+const checkImgDir = process.env.VERCEL
+  ? '/tmp/uploads/check_images'
+  : join(__dirname2, '..', '..', 'uploads', 'check_images')
+if (!existsSync(checkImgDir)) mkdirSync(checkImgDir, { recursive: true })
+const checkImgStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, checkImgDir),
+  filename: (req, file, cb) => cb(null, `check_${Date.now()}_${file.originalname.replace(/\s/g,'_')}`),
+})
+const uploadCheckImg = multer({ storage: checkImgStorage, limits: { fileSize: 10 * 1024 * 1024 } })
+
+function createMailTransport() {
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT) || 465,
+    secure: true,
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  })
+}
 
 const router = Router()
 const summaryCol = () => mongoose.connection.db.collection('invoice_commission_summary')
@@ -100,7 +125,6 @@ router.get('/', async (req, res) => {
 router.get('/stats', async (req, res) => {
   try {
     const total = await summaryCol().countDocuments({ status: { $in: [1, '1'] } })
-    // Bug 6: coalesce all three commission fields so records with total_commission=0 are counted
     const pipeline = [
       { $match: { status: { $in: [1, '1'] } } },
       { $group: { _id: null, totalComm: { $sum: {
@@ -108,16 +132,43 @@ router.get('/stats', async (req, res) => {
           if: { $gt: ['$total_commission', 0] },
           then: '$total_commission',
           else: { $cond: {
-            if: { $gt: [{ $toDouble: { $ifNull: ['$total_commission_percentage', '0'] } }, 0] },
-            then: { $toDouble: { $ifNull: ['$total_commission_percentage', '0'] } },
-            else: { $toDouble: { $ifNull: ['$total_commission_dollar', '0'] } },
+            if: { $gt: [{ $convert: { input: { $ifNull: ['$total_commission_percentage', '0'] }, to: 'double', onError: 0, onNull: 0 } }, 0] },
+            then: { $convert: { input: { $ifNull: ['$total_commission_percentage', '0'] }, to: 'double', onError: 0, onNull: 0 } },
+            else: { $convert: { input: { $ifNull: ['$total_commission_dollar', '0'] }, to: 'double', onError: 0, onNull: 0 } },
           }},
         },
       }}}}
     ]
     const result = await summaryCol().aggregate(pipeline).toArray()
     const totalComm = result[0]?.totalComm || 0
-    res.json({ total, totalComm })
+
+    // Top 10 reps by commission — aggregate invoice_commissions per sales_rep_id
+    const topRepPipeline = [
+      { $match: { status: { $in: [1, '1'] } } },
+      { $group: {
+        _id: '$sales_rep_id',
+        total_commission: { $sum: '$total_price' },
+        total_orders: { $sum: 1 },
+      }},
+      { $sort: { total_commission: -1 } },
+      { $limit: 10 },
+    ]
+    const topRepRaw = await detailCol().aggregate(topRepPipeline).toArray()
+    const repIds = topRepRaw.map(r => r._id).filter(Boolean)
+    const appUserCol = mongoose.connection.db.collection('app_user')
+    const reps = repIds.length ? await appUserCol.find({ legacy_id: { $in: repIds } }).project({ legacy_id: 1, first_name: 1, last_name: 1, user_cust_code: 1 }).toArray() : []
+    const repMap = {}
+    reps.forEach(r => { repMap[r.legacy_id] = r })
+    const topReps = topRepRaw.map((r, i) => ({
+      rank: i + 1,
+      rep_id: r._id,
+      rep_name: repMap[r._id] ? `${repMap[r._id].first_name || ''} ${repMap[r._id].last_name || ''}`.trim() : `Rep #${r._id}`,
+      rep_code: repMap[r._id]?.user_cust_code || '',
+      total_commission: r.total_commission,
+      total_orders: r.total_orders,
+    }))
+
+    res.json({ total, totalComm, topReps })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -413,6 +464,19 @@ router.get('/:id', async (req, res) => {
 
     const mainPayments = enrichWithRepPayments([...oldPayments, ...newPayments])
 
+    // Load customer contact emails for notification dropdown
+    const contactEmails = []
+    if (inv?.company_id) {
+      const contacts = await mongoose.connection.db.collection('customer_contacts')
+        .find({ company_id: inv.company_id, status: 'active' }).project({ contact_person: 1, contact_email: 1 }).toArray()
+      contacts.forEach(c => { if (c.contact_email && c.contact_email !== 'Null') contactEmails.push({ name: c.contact_person || '', email: c.contact_email }) })
+      // Also add rep emails
+      for (const r of allReps) {
+        const repUser = await userCol().findOne({ legacy_id: r.legacy_id })
+        if (repUser?.email) contactEmails.push({ name: `${r.first_name || ''} ${r.last_name || ''}`.trim(), email: repUser.email })
+      }
+    }
+
     res.json({
       ...comm,
       invoice: { ...(inv || {}), total_received: totalReceived, balance_due: Math.max(0, (inv?.net_amount || 0) - totalReceived) },
@@ -425,6 +489,7 @@ router.get('/:id', async (req, res) => {
       reps: allReps,
       commItemDets,
       commRepDets,
+      contactEmails,
     })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -640,15 +705,15 @@ router.put('/:id', async (req, res) => {
 })
 
 // POST add payment to commission
-router.post('/:id/payment', async (req, res) => {
+router.post('/:id/payment', uploadCheckImg.single('check_image'), async (req, res) => {
   try {
     const comm = await summaryCol().findOne({ _id: new mongoose.Types.ObjectId(req.params.id) })
     if (!comm) return res.status(404).json({ error: 'Commission not found' })
 
-    const { commission_paid_date, received_date, received_amount, paid_mode, partial_comm_total, mark_paid, rep_payments } = req.body
-    // rep_payments = [{rep_id, paid_amount}]
-
-    // Insert payment record into invoice_payments
+    const body = req.body
+    const { commission_paid_date, received_date, received_amount, paid_mode, partial_comm_total, mark_paid } = body
+    const rep_payments = body.rep_payments ? (typeof body.rep_payments === 'string' ? JSON.parse(body.rep_payments) : body.rep_payments) : []
+    const notify_emails = body.notify_emails ? (typeof body.notify_emails === 'string' ? JSON.parse(body.notify_emails) : body.notify_emails) : []
     const paymentDoc = {
       po_id: String(comm.po_id),
       inv_com_id: String(comm.legacy_id),
@@ -657,6 +722,7 @@ router.post('/:id/payment', async (req, res) => {
       compaid_mode: paid_mode || '',
       partial_com_total: parseFloat(partial_comm_total) || 0,
       received_amt: parseFloat(received_amount) || 0,
+      check_image: req.file ? 'uploads/check_images/' + req.file.filename : '',
       inv_payment_status: 1,
       created_at: new Date(),
     }
@@ -697,10 +763,76 @@ router.post('/:id/payment', async (req, res) => {
       await summaryCol().updateOne({ _id: comm._id }, { $set: { commission_paid_status: 1, comm_paid_date: commission_paid_date || new Date().toISOString().slice(0, 10) } })
     }
 
+    // Send email notifications if emails provided
+    if (notify_emails && notify_emails.length) {
+      try {
+        const inv = await invoiceCol().findOne({ legacy_id: comm.po_id })
+        const transport = createMailTransport()
+        await transport.sendMail({
+          from: `"AirFeet Commission" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+          to: notify_emails.join(','),
+          subject: `Commission Payment Recorded - Invoice #${inv?.invoice_number || comm.po_id}`,
+          html: `<p>A commission payment of <strong>$${parseFloat(received_amount).toFixed(2)}</strong> has been recorded.</p>
+                 <p>Invoice #: ${inv?.invoice_number || comm.po_id}<br/>
+                 Date: ${commission_paid_date || new Date().toISOString().slice(0,10)}</p>`,
+        })
+      } catch (_) { /* don't fail payment save if email fails */ }
+    }
+
     res.json({ success: true })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
+})
+
+// PUT archive/unarchive the invoice linked to a commission
+router.put('/:id/archive', async (req, res) => {
+  try {
+    const comm = await summaryCol().findOne({ _id: new mongoose.Types.ObjectId(req.params.id) })
+    if (!comm) return res.status(404).json({ error: 'Commission not found' })
+    const archive = req.body.archive ? 2 : 1
+    await invoiceCol().updateOne({ legacy_id: comm.po_id }, { $set: { po_status: archive } })
+    res.json({ success: true })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// PUT edit an existing payment
+router.put('/:id/payment/:paymentId', async (req, res) => {
+  try {
+    const { commission_paid_date, received_date, received_amount, paid_mode, partial_comm_total, mark_paid, rep_payments } = req.body
+    const payId = new mongoose.Types.ObjectId(req.params.paymentId)
+
+    await payCol().updateOne({ _id: payId }, { $set: {
+      commission_paid_date: commission_paid_date || '',
+      received_date: received_date || '',
+      compaid_mode: paid_mode || '',
+      partial_com_total: parseFloat(partial_comm_total) || 0,
+      received_amt: parseFloat(received_amount) || 0,
+      updated_at: new Date(),
+    }})
+
+    // Update per-rep payments for this payment
+    if (rep_payments && rep_payments.length) {
+      for (const rp of rep_payments) {
+        await payRepCol().updateOne(
+          { id_inv_payment: String(payId), rep_id: String(rp.rep_id) },
+          { $set: { comm_paid_amount: String(parseFloat(rp.paid_amount) || 0) } }
+        )
+      }
+    }
+
+    if (mark_paid !== undefined) {
+      const comm = await summaryCol().findOne({ _id: new mongoose.Types.ObjectId(req.params.id) })
+      if (comm) {
+        await summaryCol().updateOne({ _id: comm._id }, {
+          $set: mark_paid
+            ? { commission_paid_status: 1, comm_paid_date: commission_paid_date || new Date().toISOString().slice(0, 10) }
+            : { commission_paid_status: 0 }
+        })
+      }
+    }
+    res.json({ success: true })
+  } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
 // DELETE commission (soft delete summary + hard delete associated records)

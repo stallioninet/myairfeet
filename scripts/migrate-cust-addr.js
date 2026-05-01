@@ -50,9 +50,9 @@ function parseInserts(sql, table) {
 }
 
 async function main() {
-  await mongoose.connect(process.env.MONGO_URI, { dbName: '523' })
+  await mongoose.connect(process.env.MONGO_URI, { dbName: 'app' })
   const db = mongoose.connection.db
-  const sql = fs.readFileSync('E:/xmapp/htdocs/523prototype/myairfee_8qvsun15.sql', 'utf-8')
+  const sql = fs.readFileSync('E:/xmapp/htdocs/523app/co523.sql', 'utf-8')
 
   const addrs = parseInserts(sql, 'company_address')
   console.log('Found', addrs.length, 'company_address records')

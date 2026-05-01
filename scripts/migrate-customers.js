@@ -8,7 +8,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: join(__dirname, '..', '.env') })
 
 const MONGO_URI = process.env.MONGO_URI
-const SQL_FILE = 'E:/xmapp/htdocs/523prototype/myairfee_8qvsun15.sql'
+const SQL_FILE = 'E:/xmapp/htdocs/523app/co523.sql'
 
 function parseInserts(sql, tableName) {
   const rows = []
@@ -68,7 +68,7 @@ function parseInserts(sql, tableName) {
 }
 
 async function main() {
-  await mongoose.connect(MONGO_URI, { dbName: '523' })
+  await mongoose.connect(MONGO_URI, { dbName: 'app' })
   console.log('Connected to MongoDB')
 
   const sql = fs.readFileSync(SQL_FILE, 'utf-8')
@@ -97,7 +97,7 @@ async function main() {
       ship: (c.cust_ship === 'Null' || !c.cust_ship) ? '' : c.cust_ship.trim(),
       ship_via: (c.cust_ship_via === 'Null' || !c.cust_ship_via) ? '' : c.cust_ship_via.trim(),
       project: (c.cust_project === 'Null' || !c.cust_project) ? '' : c.cust_project.trim(),
-      status: c.company_status === '1' ? 'active' : c.company_status === '4' ? 'inactive' : 'inactive',
+      status: c.company_status === '1' ? 'active' : c.company_status === '4' ? 'pilot' : 'inactive',
       send_duemail: c.send_duemail === '1',
       created_at: c.company_created_on && c.company_created_on !== '0000-00-00 00:00:00' ? new Date(c.company_created_on) : new Date(),
       updated_at: c.company_modified_on && c.company_modified_on !== '0000-00-00 00:00:00' ? new Date(c.company_modified_on) : null,
