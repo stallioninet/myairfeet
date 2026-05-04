@@ -40,6 +40,7 @@ import SalesRepReports from './pages/sales/SalesRepReports'
 import InvoiceReports from './pages/invoices/InvoiceReports'
 import PilotProgramList from './pages/pilot/PilotProgramList'
 import DefaultAccess from './pages/admin/users/DefaultAccess'
+import MyProfile from './pages/profile/MyProfile'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -51,6 +52,13 @@ function App() {
       try { setUser(JSON.parse(saved)) } catch {}
     }
     setChecking(false)
+
+    function onUserUpdated() {
+      const s = localStorage.getItem('ct_user')
+      if (s) try { setUser(JSON.parse(s)) } catch {}
+    }
+    window.addEventListener('ct_user_updated', onUserUpdated)
+    return () => window.removeEventListener('ct_user_updated', onUserUpdated)
   }, [])
 
   function handleLogin(userData) {
@@ -85,6 +93,7 @@ function App() {
           <Route path="/admin/activity/:id" element={<UserActivityView />} />
           <Route path="/admin/backup" element={<BackupManagement />} />
           <Route path="/admin/default-access" element={<DefaultAccess />} />
+          <Route path="/profile" element={<MyProfile />} />
           <Route path="/events" element={<EventList />} />
           <Route path="/items" element={<ItemsHub />} />
           <Route path="/items/sizes/:id" element={<ItemSizesView />} />

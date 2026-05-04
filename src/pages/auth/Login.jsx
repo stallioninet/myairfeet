@@ -7,7 +7,7 @@ import { ASSETS } from '../../lib/config'
 // Quick-select pre-fills email only — user must enter their own password
 const roleEmails = {
   admin:        'admin@stallioni.com',
-  'sales-rep':  'tami.airfeet@gmail.com',
+  'sales-rep':  'neil@myairfeet.com',
   'data-entry': 'gomathi@stallioni.com',
 }
 

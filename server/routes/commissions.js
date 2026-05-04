@@ -31,10 +31,10 @@ const summaryCol = () => mongoose.connection.db.collection('invoice_commission_s
 const detailCol = () => mongoose.connection.db.collection('invoice_commissions')
 const invoiceCol = () => mongoose.connection.db.collection('invoices')
 const custCol = () => mongoose.connection.db.collection('customers')
-const repCol = () => mongoose.connection.db.collection('sales_reps')
+const repCol = () => mongoose.connection.db.collection('app_user')
 const payRepCol = () => mongoose.connection.db.collection('invoice_payment_reps')
 const payCol = () => mongoose.connection.db.collection('invoice_payments')
-const userCol = () => mongoose.connection.db.collection('users')
+const userCol = () => mongoose.connection.db.collection('app_users')
 
 // Resolves caller identity from X-User-Email header.
 // Returns { isSalesRep, repLegacyId } — repLegacyId is null for non-reps.

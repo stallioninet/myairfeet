@@ -16,9 +16,12 @@ function getUser() {
 // SALES REP DASHBOARD
 // ─────────────────────────────────────────────────────────────────
 function RepDashboard({ user }) {
-  const [loading, setLoading]       = useState(true)
-  const [rows, setRows]             = useState([])    // commission report rows
-  const [repName, setRepName]       = useState(user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : 'Sales Rep')
+  const [loading, setLoading]         = useState(true)
+  const [rows, setRows]               = useState([])
+  const [repName, setRepName]         = useState(user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : 'Sales Rep')
+  const [ytdRank, setYtdRank]         = useState(null)
+  const [monthRank, setMonthRank]     = useState(null)
+  const [totalReps, setTotalReps]     = useState(null)
 
   const monthlyCanvasRef  = useRef(null)
   const pieCanvasRef      = useRef(null)
@@ -27,15 +30,39 @@ function RepDashboard({ user }) {
 
   useEffect(() => {
     if (!user.email) { setLoading(false); return }
-    api.getCommissionReport({ rep_email: user.email })
-      .then(data => {
-        const r = data || []
-        setRows(r)
-        // If we got a rep_name from the data, use it
-        if (r.length > 0 && r[0].rep_name) setRepName(r[0].rep_name)
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    const currentYear  = new Date().getFullYear()
+    const currentMonth = new Date().getMonth() + 1
+
+    Promise.all([
+      api.getCommissionReport({ rep_email: user.email }).catch(() => []),
+      api.getReportSalesRepYear().catch(() => []),
+      api.getReportSalesRepMonth(currentYear).catch(() => []),
+    ]).then(([commData, yearData, monthData]) => {
+      const r = commData || []
+      setRows(r)
+      if (r.length > 0 && r[0].rep_name) setRepName(r[0].rep_name)
+
+      const repId = r.length > 0 ? r[0].rep_id : null
+
+      // ── YTD Rank ──────────────────────────────────────────────
+      const ytd = (yearData || []).filter(x => x.year === currentYear)
+      const ytdSorted = [...ytd].sort((a, b) => b.total_commission - a.total_commission)
+      setTotalReps(ytdSorted.length)
+      if (repId != null) {
+        const pos = ytdSorted.findIndex(x => x.rep_id === repId)
+        setYtdRank(pos >= 0 ? pos + 1 : null)
+      }
+
+      // ── Current Month Rank ────────────────────────────────────
+      const monthRows = (monthData || []).filter(x => x.month === currentMonth)
+      const monthByRep = {}
+      monthRows.forEach(x => { monthByRep[x.rep_id] = (monthByRep[x.rep_id] || 0) + (x.commission || x.total_commission || 0) })
+      const monthSorted = Object.entries(monthByRep).sort((a, b) => b[1] - a[1])
+      if (repId != null) {
+        const mPos = monthSorted.findIndex(([id]) => Number(id) === repId)
+        setMonthRank(mPos >= 0 ? mPos + 1 : null)
+      }
+    }).finally(() => setLoading(false))
   }, [])
 
   // ── Monthly commission chart ──────────────────────────────────
@@ -114,13 +141,21 @@ function RepDashboard({ user }) {
   // Recent invoices — latest 10 by shipped_date
   const recent = [...rows].sort((a, b) => (b.shipped_date || '').localeCompare(a.shipped_date || '')).slice(0, 10)
 
+  function rankLabel(rank, total) {
+    if (rank == null) return '—'
+    const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th'
+    return `${rank}${suffix}${total ? ' / ' + total : ''}`
+  }
+
   const stats = [
-    { label: 'Total Invoices',    value: rows.length,    icon: 'bi-receipt',           bg: '#eff6ff', color: '#2563eb' },
-    { label: 'Total Commission',  value: fmt(totalComm), icon: 'bi-cash-stack',         bg: '#f0fdf4', color: '#16a34a' },
-    { label: 'Paid Commission',   value: fmt(paidComm),  icon: 'bi-check-circle',       bg: '#ecfdf5', color: '#059669' },
-    { label: 'Outstanding',       value: fmt(unpaidComm),icon: 'bi-exclamation-circle', bg: '#fff7ed', color: '#f59e0b' },
-    { label: 'YTD Commission',    value: fmt(ytdComm),   icon: 'bi-graph-up-arrow',     bg: '#faf5ff', color: '#9333ea' },
-    { label: 'Customers Served',  value: uniqueCusts,    icon: 'bi-building',           bg: '#fef9c3', color: '#854d0e' },
+    { label: 'Total Invoices',      value: rows.length,              icon: 'bi-receipt',           bg: '#eff6ff', color: '#2563eb' },
+    { label: 'Total Commission',    value: fmt(totalComm),           icon: 'bi-cash-stack',         bg: '#f0fdf4', color: '#16a34a' },
+    { label: 'Paid Commission',     value: fmt(paidComm),            icon: 'bi-check-circle',       bg: '#ecfdf5', color: '#059669' },
+    { label: 'Outstanding',         value: fmt(unpaidComm),          icon: 'bi-exclamation-circle', bg: '#fff7ed', color: '#f59e0b' },
+    { label: 'YTD Commission',      value: fmt(ytdComm),             icon: 'bi-graph-up-arrow',     bg: '#faf5ff', color: '#9333ea' },
+    { label: 'Customers Served',    value: uniqueCusts,              icon: 'bi-building',           bg: '#fef9c3', color: '#854d0e' },
+    { label: 'YTD Rank',            value: rankLabel(ytdRank, totalReps),   icon: 'bi-trophy',      bg: '#fff1f2', color: '#e11d48' },
+    { label: 'Current Month Rank',  value: rankLabel(monthRank, null),      icon: 'bi-bar-chart-steps', bg: '#fdf4ff', color: '#a21caf' },
   ]
 
   if (loading) return (
@@ -150,7 +185,7 @@ function RepDashboard({ user }) {
       {/* Stat cards */}
       <div className="row g-2 mb-3">
         {stats.map((s, i) => (
-          <div className="col-6 col-md-4 col-lg-2" key={i}>
+          <div className="col-6 col-md-4 col-lg-3" key={i}>
             <div className="card border-0 shadow-sm h-100 text-center" style={{ borderRadius: 14, padding: '14px 8px' }}>
               <div className="d-flex align-items-center justify-content-center mx-auto mb-1"
                 style={{ width: 36, height: 36, borderRadius: 10, background: s.bg, color: s.color, fontSize: '1rem' }}>
@@ -163,37 +198,37 @@ function RepDashboard({ user }) {
         ))}
       </div>
 
-      {/* Charts */}
-      <div className="row g-2 mb-3">
-        <div className="col-12 col-lg-8">
-          <div className="card border-0 shadow-sm rounded-4 h-100">
-            <div className="card-body p-3">
-              <h6 className="fw-bold mb-1">Monthly Commission ({currentYear})</h6>
-              <p className="text-muted mb-2" style={{ fontSize: 11 }}>Commission earned per month based on shipped date</p>
-              <div style={{ height: 'clamp(180px, 28vw, 260px)' }}>
-                <canvas ref={monthlyCanvasRef}></canvas>
+      {/* Charts — only show when there is data */}
+      {rows.length > 0 && (
+        <div className="row g-2 mb-3">
+          <div className="col-12 col-lg-8">
+            <div className="card border-0 shadow-sm rounded-4 h-100">
+              <div className="card-body p-3">
+                <h6 className="fw-bold mb-1">Monthly Commission ({currentYear})</h6>
+                <p className="text-muted mb-2" style={{ fontSize: 11 }}>Commission earned per month based on shipped date</p>
+                <div style={{ height: 'clamp(180px, 28vw, 260px)' }}>
+                  <canvas ref={monthlyCanvasRef}></canvas>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-        <div className="col-12 col-lg-4">
-          <div className="card border-0 shadow-sm rounded-4 h-100">
-            <div className="card-body p-3">
-              <h6 className="fw-bold mb-1">Commission Status</h6>
-              <p className="text-muted mb-2" style={{ fontSize: 11 }}>All-time paid vs outstanding</p>
-              <div style={{ height: 'clamp(180px, 28vw, 260px)' }}>
-                <canvas ref={pieCanvasRef}></canvas>
-              </div>
-              {rows.length > 0 && (
+          <div className="col-12 col-lg-4">
+            <div className="card border-0 shadow-sm rounded-4 h-100">
+              <div className="card-body p-3">
+                <h6 className="fw-bold mb-1">Commission Status</h6>
+                <p className="text-muted mb-2" style={{ fontSize: 11 }}>All-time paid vs outstanding</p>
+                <div style={{ height: 'clamp(180px, 28vw, 260px)' }}>
+                  <canvas ref={pieCanvasRef}></canvas>
+                </div>
                 <div className="d-flex justify-content-around mt-2" style={{ fontSize: 12 }}>
                   <span><span className="fw-bold" style={{ color: '#10b981' }}>{rows.filter(r => r.is_paid).length}</span> <span className="text-muted">Paid</span></span>
                   <span><span className="fw-bold" style={{ color: '#f59e0b' }}>{rows.filter(r => !r.is_paid).length}</span> <span className="text-muted">Unpaid</span></span>
                 </div>
-              )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Recent invoices + Quick links */}
       <div className="row g-2">
@@ -208,8 +243,9 @@ function RepDashboard({ user }) {
               </div>
               {rows.length === 0 ? (
                 <div className="text-center py-4 text-muted">
-                  <i className="bi bi-receipt fs-1 d-block mb-2 opacity-25"></i>
-                  No commission data found for your account
+                  <i className="bi bi-inbox fs-1 d-block mb-2 opacity-25"></i>
+                  <div style={{ fontSize: 13 }}>No commission records found for your account.</div>
+                  <div style={{ fontSize: 11, marginTop: 4 }}>Contact your administrator if you believe this is an error.</div>
                 </div>
               ) : (
                 <div className="table-responsive">

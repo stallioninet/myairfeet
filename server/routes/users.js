@@ -1,6 +1,32 @@
 import express from 'express'
+import multer from 'multer'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
+import fs from 'fs'
 import User from '../models/User.js'
 import { hashPassword, verifyPassword } from '../lib/password.js'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const uploadDir = process.env.VERCEL
+  ? '/tmp/uploads/users'
+  : join(__dirname, '..', '..', 'uploads', 'users')
+try { if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true }) } catch {}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const ext = file.originalname.split('.').pop().toLowerCase()
+    cb(null, `user_${req.params.id}_${Date.now()}.${ext}`)
+  },
+})
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (/^image\/(jpeg|jpg|png|gif|webp)$/.test(file.mimetype)) cb(null, true)
+    else cb(new Error('Only image files (jpg, png, gif, webp) are allowed'))
+  },
+})
 
 const router = express.Router()
 
@@ -37,6 +63,44 @@ router.get('/check-unique', async (req, res) => {
     if (exclude_id) filter._id = { $ne: exclude_id }
     const existing = await User.findOne(filter)
     res.json({ unique: !existing })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST upload user image
+router.post('/:id/image', (req, res, next) => {
+  upload.single('image')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message })
+    next()
+  })
+}, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No image file uploaded' })
+    const user = await User.findById(req.params.id)
+    if (!user) return res.status(404).json({ error: 'User not found' })
+    if (user.image) {
+      try { fs.unlinkSync(join(uploadDir, user.image)) } catch {}
+    }
+    user.image = req.file.filename
+    await user.save()
+    res.json({ image: req.file.filename })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE user image
+router.delete('/:id/image', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id)
+    if (!user) return res.status(404).json({ error: 'User not found' })
+    if (user.image) {
+      try { fs.unlinkSync(join(uploadDir, user.image)) } catch {}
+      user.image = null
+      await user.save()
+    }
+    res.json({ message: 'Image removed' })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

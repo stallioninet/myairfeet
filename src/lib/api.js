@@ -30,6 +30,16 @@ export const api = {
   loginUser: (email, password) => request('/users/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   getUserStats: () => request('/users/stats/counts'),
   seedUsers: () => request('/users/seed', { method: 'POST' }),
+  uploadUserImage: async (id, file) => {
+    const formData = new FormData()
+    formData.append('image', file)
+    const res = await fetch(`${API_URL}/users/${id}/image`, { method: 'POST', body: formData })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Image upload failed')
+    return data
+  },
+  deleteUserImage: (id) => request(`/users/${id}/image`, { method: 'DELETE' }),
+  getUserImageUrl: (filename) => filename ? `${API_URL.replace('/api', '')}/uploads/users/${filename}` : null,
 
   // Privileges
   getPrivileges: () => request('/privileges'),

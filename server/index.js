@@ -38,6 +38,7 @@ dotenv.config({ path: join(__dirname, '..', '.env') })
 const app = express()
 app.use(cors())
 app.use(express.json({ limit: '50mb' }))
+app.use('/uploads', express.static(join(__dirname, '..', 'uploads')))
 
 // MongoDB Connection
 const MONGO_URI = process.env.MONGO_URI

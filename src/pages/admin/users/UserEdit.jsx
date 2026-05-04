@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../../../lib/api'
@@ -13,8 +13,12 @@ const levelDescriptions = {
 export default function UserEdit() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const fileInputRef = useRef(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [imageFile, setImageFile] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
+  const [currentImage, setCurrentImage] = useState(null)
   const [form, setForm] = useState({
     first_name: '',
     last_name: '',
@@ -52,6 +56,7 @@ export default function UserEdit() {
         status: data.status || 'active',
         notes: data.notes || '',
       })
+      setCurrentImage(data.image || null)
     } catch (err) {
       toast.error('User not found')
       navigate('/admin/users')
@@ -62,6 +67,31 @@ export default function UserEdit() {
 
   function handleChange(e) {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
+  }
+
+  function handleImageChange(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    if (imagePreview) URL.revokeObjectURL(imagePreview)
+    setImageFile(file)
+    setImagePreview(URL.createObjectURL(file))
+  }
+
+  function removeImage() {
+    if (imagePreview) URL.revokeObjectURL(imagePreview)
+    setImageFile(null)
+    setImagePreview(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  async function handleRemoveCurrentImage() {
+    try {
+      await api.deleteUserImage(id)
+      setCurrentImage(null)
+      toast.success('Photo removed')
+    } catch {
+      toast.error('Failed to remove photo')
+    }
   }
 
   function getInitials() {
@@ -81,12 +111,10 @@ export default function UserEdit() {
       toast.error('Invalid email format')
       return
     }
-    // Password validation (only if changing)
     if (form.password) {
       if (form.password.length < 8) { toast.error('Password must be at least 8 characters'); return }
       if (form.password !== form.confirmPassword) { toast.error('Passwords do not match'); return }
     }
-    // Uniqueness checks
     try {
       const emailCheck = await api.checkUniqueUser('email', form.email.trim(), id)
       if (!emailCheck.unique) { toast.error('Email already exists'); return }
@@ -112,6 +140,17 @@ export default function UserEdit() {
       }
       if (form.password) payload.password = form.password
       await api.updateUser(id, payload)
+
+      if (imageFile) {
+        try {
+          const result = await api.uploadUserImage(id, imageFile)
+          setCurrentImage(result.image)
+          removeImage()
+        } catch {
+          toast.error('User updated but image upload failed')
+        }
+      }
+
       toast.success(`User "${form.first_name} ${form.last_name}" updated!`)
       navigate('/admin/users')
     } catch (err) {
@@ -121,6 +160,7 @@ export default function UserEdit() {
   }
 
   const initials = getInitials()
+  const displayImage = imagePreview || (currentImage ? api.getUserImageUrl(currentImage) : null)
 
   if (loading) {
     return (
@@ -261,8 +301,39 @@ export default function UserEdit() {
           <div className="col-lg-4">
             {/* User Preview */}
             <div className="form-section p-4 mb-4 text-center">
-              <div className={`avatar-preview mx-auto mb-3${initials ? ' has-name' : ''}`}>
-                {initials || <i className="bi bi-person"></i>}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                style={{ display: 'none' }}
+                onChange={handleImageChange}
+              />
+              <div style={{ position: 'relative', width: 80, margin: '0 auto 12px' }}>
+                <div
+                  className={`avatar-preview${!displayImage && initials ? ' has-name' : ''}`}
+                  style={{ cursor: 'pointer', overflow: 'hidden' }}
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Click to change photo"
+                >
+                  {displayImage
+                    ? <img src={displayImage} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : initials || <i className="bi bi-person"></i>
+                  }
+                </div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    position: 'absolute', bottom: 0, right: 0,
+                    width: 24, height: 24, borderRadius: '50%',
+                    background: '#2563eb', border: '2px solid #fff',
+                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: 0, cursor: 'pointer', fontSize: 11,
+                  }}
+                  title="Change photo"
+                >
+                  <i className="bi bi-camera-fill"></i>
+                </button>
               </div>
               <h6 className="mb-1">
                 {form.first_name.trim() || form.last_name.trim()
@@ -272,6 +343,21 @@ export default function UserEdit() {
               <div className="text-muted" style={{ fontSize: '0.82rem' }}>
                 {form.email.trim() || 'user@example.com'}
               </div>
+              {imagePreview && (
+                <button type="button" className="btn btn-link btn-sm text-danger p-0 mt-2" onClick={removeImage}>
+                  <i className="bi bi-x-circle me-1"></i>Cancel change
+                </button>
+              )}
+              {!imagePreview && currentImage && (
+                <button type="button" className="btn btn-link btn-sm text-danger p-0 mt-2" onClick={handleRemoveCurrentImage}>
+                  <i className="bi bi-x-circle me-1"></i>Remove photo
+                </button>
+              )}
+              {!displayImage && (
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-light)', marginTop: 6 }}>
+                  Click avatar to upload photo
+                </div>
+              )}
             </div>
 
             {/* Role & Status */}

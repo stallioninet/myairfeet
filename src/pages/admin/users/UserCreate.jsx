@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../../../lib/api'
@@ -12,8 +12,11 @@ const levelDescriptions = {
 
 export default function UserCreate() {
   const navigate = useNavigate()
+  const fileInputRef = useRef(null)
   const [saving, setSaving] = useState(false)
   const [showPwd, setShowPwd] = useState(false)
+  const [imageFile, setImageFile] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
   const [form, setForm] = useState({
     first_name: '',
     last_name: '',
@@ -31,6 +34,21 @@ export default function UserCreate() {
 
   function handleChange(e) {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
+  }
+
+  function handleImageChange(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    if (imagePreview) URL.revokeObjectURL(imagePreview)
+    setImageFile(file)
+    setImagePreview(URL.createObjectURL(file))
+  }
+
+  function removeImage() {
+    if (imagePreview) URL.revokeObjectURL(imagePreview)
+    setImageFile(null)
+    setImagePreview(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   function getPasswordStrength(pwd) {
@@ -87,7 +105,7 @@ export default function UserCreate() {
 
     setSaving(true)
     try {
-      await api.createUser({
+      const user = await api.createUser({
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
         email: form.email.trim(),
@@ -100,6 +118,15 @@ export default function UserCreate() {
         status: form.status,
         notes: form.notes.trim() || null,
       })
+
+      if (imageFile) {
+        try {
+          await api.uploadUserImage(user._id, imageFile)
+        } catch {
+          toast.error('User created but image upload failed')
+        }
+      }
+
       toast.success(`User "${form.first_name} ${form.last_name}" created!`)
       navigate('/admin/users')
     } catch (err) {
@@ -313,8 +340,39 @@ export default function UserCreate() {
           <div className="col-lg-4">
             {/* User Preview */}
             <div className="form-section p-4 mb-4 text-center">
-              <div className={`avatar-preview mx-auto mb-3${initials ? ' has-name' : ''}`}>
-                {initials || <i className="bi bi-person"></i>}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                style={{ display: 'none' }}
+                onChange={handleImageChange}
+              />
+              <div style={{ position: 'relative', width: 80, margin: '0 auto 12px' }}>
+                <div
+                  className={`avatar-preview${!imagePreview && initials ? ' has-name' : ''}`}
+                  style={{ cursor: 'pointer', overflow: 'hidden' }}
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Click to upload photo"
+                >
+                  {imagePreview
+                    ? <img src={imagePreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : initials || <i className="bi bi-person"></i>
+                  }
+                </div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    position: 'absolute', bottom: 0, right: 0,
+                    width: 24, height: 24, borderRadius: '50%',
+                    background: '#2563eb', border: '2px solid #fff',
+                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: 0, cursor: 'pointer', fontSize: 11,
+                  }}
+                  title="Upload photo"
+                >
+                  <i className="bi bi-camera-fill"></i>
+                </button>
               </div>
               <h6 className="mb-1">
                 {form.first_name.trim() || form.last_name.trim()
@@ -324,6 +382,16 @@ export default function UserCreate() {
               <div className="text-muted" style={{ fontSize: '0.82rem' }}>
                 {form.email.trim() || 'user@example.com'}
               </div>
+              {imagePreview && (
+                <button type="button" className="btn btn-link btn-sm text-danger p-0 mt-2" onClick={removeImage}>
+                  <i className="bi bi-x-circle me-1"></i>Remove photo
+                </button>
+              )}
+              {!imagePreview && (
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-light)', marginTop: 6 }}>
+                  Click avatar to upload photo
+                </div>
+              )}
             </div>
 
             {/* Role & Status */}

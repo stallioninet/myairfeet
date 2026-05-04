@@ -19,7 +19,9 @@ const userSchema = new mongoose.Schema({
     enum: ['active', 'inactive'],
     default: 'active'
   },
-  notes: { type: String, default: null },
+  address: { type: String, default: '' },
+  notes:   { type: String, default: null },
+  image:   { type: String, default: null },
   last_login: { type: Date, default: null },
 }, {
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }

@@ -22,14 +22,17 @@ function fmtDaysAgo(d) {
 export default function TopHeader({ user, onLogout, onToggleSidebar }) {
   const navigate = useNavigate()
   const [notifOpen, setNotifOpen] = useState(false)
+  const [userOpen, setUserOpen]   = useState(false)
   const [notifs, setNotifs] = useState(null)
   const [notifLoading, setNotifLoading] = useState(false)
-  const dropRef = useRef(null)
+  const dropRef     = useRef(null)
+  const userDropRef = useRef(null)
 
-  // Close on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     function handler(e) {
       if (dropRef.current && !dropRef.current.contains(e.target)) setNotifOpen(false)
+      if (userDropRef.current && !userDropRef.current.contains(e.target)) setUserOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -229,24 +232,103 @@ export default function TopHeader({ user, onLogout, onToggleSidebar }) {
           )}
         </div>
 
-        {/* User info */}
-        <div className="d-flex align-items-center gap-2">
-          <div className="user-avatar" style={{ width: '32px', height: '32px', fontSize: '0.75rem', background: 'linear-gradient(135deg, #3b82f6, #2563eb)' }}>
-            {getInitials()}
-          </div>
-          <div style={{ lineHeight: 1.2 }}>
-            <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
-              {user ? `${user.first_name} ${user.last_name}` : 'Admin'}
+        {/* User dropdown */}
+        <div ref={userDropRef} style={{ position: 'relative' }}>
+          <div
+            className="d-flex align-items-center gap-2"
+            style={{ cursor: 'pointer', padding: '4px 8px', borderRadius: 8, transition: 'background .15s' }}
+            onClick={() => setUserOpen(v => !v)}
+            onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            title="Account menu"
+          >
+            <div
+              className="user-avatar"
+              style={{
+                width: 32, height: 32, fontSize: '0.75rem', overflow: 'hidden',
+                background: user?.image ? 'transparent' : 'linear-gradient(135deg, #3b82f6, #2563eb)',
+              }}
+            >
+              {user?.image
+                ? <img src={api.getUserImageUrl(user.image)} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : getInitials()
+              }
             </div>
-            <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-              {levelLabels[user?.level] || levelLabels[user?.user_type?.replace('_', '-')] || 'User'}
+            <div style={{ lineHeight: 1.2 }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                {user ? `${user.first_name} ${user.last_name}` : 'Admin'}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                {levelLabels[user?.level] || levelLabels[user?.user_type?.replace('_', '-')] || 'User'}
+              </div>
             </div>
+            <i className="bi bi-chevron-down" style={{ fontSize: '0.65rem', color: '#94a3b8' }}></i>
           </div>
-        </div>
 
-        <button className="btn btn-sm btn-outline-secondary" onClick={handleLogout} title="Logout" style={{ fontSize: '0.85rem' }}>
-          <i className="bi bi-box-arrow-right"></i>
-        </button>
+          {userOpen && (
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 8px)', right: 0, width: 220,
+              background: '#fff', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+              border: '1px solid #e8ecf1', zIndex: 1050, overflow: 'hidden',
+            }}>
+              {/* Header */}
+              <div className="px-3 py-3" style={{ background: 'linear-gradient(135deg,#1e293b,#334155)', color: '#fff' }}>
+                <div className="d-flex align-items-center gap-2">
+                  <div style={{
+                    width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
+                    background: user?.image ? 'transparent' : 'linear-gradient(135deg,#3b82f6,#2563eb)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '1rem', fontWeight: 700, color: '#fff', border: '2px solid rgba(255,255,255,0.2)',
+                  }}>
+                    {user?.image
+                      ? <img src={api.getUserImageUrl(user.image)} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : getInitials()
+                    }
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="fw-semibold text-truncate" style={{ fontSize: 13 }}>
+                      {user ? `${user.first_name} ${user.last_name}` : 'Admin'}
+                    </div>
+                    <div className="text-truncate" style={{ fontSize: 11, color: '#94a3b8' }}>
+                      {levelLabels[user?.level] || 'User'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Menu items */}
+              <div className="py-1">
+                <Link
+                  to="/profile"
+                  onClick={() => setUserOpen(false)}
+                  style={{ textDecoration: 'none', color: 'inherit' }}
+                >
+                  <div className="d-flex align-items-center gap-2 px-3 py-2"
+                    style={{ fontSize: 13, cursor: 'pointer', transition: 'background .12s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <i className="bi bi-person-circle" style={{ fontSize: 15, color: '#2563eb', width: 18, textAlign: 'center' }}></i>
+                    My Profile
+                  </div>
+                </Link>
+
+                <div style={{ borderTop: '1px solid #f1f5f9', margin: '4px 0' }} />
+
+                <div
+                  className="d-flex align-items-center gap-2 px-3 py-2"
+                  style={{ fontSize: 13, cursor: 'pointer', color: '#ef4444', transition: 'background .12s' }}
+                  onClick={() => { setUserOpen(false); handleLogout() }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <i className="bi bi-box-arrow-right" style={{ fontSize: 15, width: 18, textAlign: 'center' }}></i>
+                  Sign Out
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
