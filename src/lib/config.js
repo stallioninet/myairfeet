@@ -9,6 +9,6 @@ export const COMPANY = {
 }
 
 export const ASSETS = {
-  logoFleet: 'https://staging.stallioni.com/assets/images/logo_fleet.png',
-  logoInsole: 'https://staging.stallioni.com/assets/images/logo_insole.png',
+  logoFleet: '/logo_insole.png',
+  logoInsole: '/logo_insole.png',
 }
